@@ -1,0 +1,157 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model Course {
+  id              String               @id @default(cuid())
+  courseName      String
+  courseCode      String
+  courseType      String?
+  semester        String
+  className       String
+  department      String?
+  major           String?
+  teacherNames    String?
+  ownerTeacher    String?
+  hours           String?
+  credit          String?
+  selectedCount   Int                  @default(0)
+  evaluatedCount  Int                  @default(0)
+  targetCount     Int                  @default(7)
+  expectedValue   Decimal              @default(0.65) @db.Decimal(6, 4)
+  directWeight    Decimal              @default(0.8) @db.Decimal(6, 4)
+  indirectWeight  Decimal              @default(0.2) @db.Decimal(6, 4)
+  surveyWeight    Decimal              @default(1) @db.Decimal(6, 4)
+  analysisText    String               @db.Text
+  problemText     String               @db.Text
+  improvementText String               @db.Text
+  teacherComment  String               @db.Text
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  targets         CourseTarget[]
+  methods         AssessmentMethod[]
+  students        Student[]
+  examQuestions   ExamQuestion[]
+  methodConfigs   TargetMethodConfig[]
+  scores          StudentScore[]
+  indirectResults IndirectEvaluation[]
+
+  @@unique([courseName, semester, className])
+}
+
+model CourseTarget {
+  id                         String               @id @default(cuid())
+  courseId                   String
+  sortOrder                  Int
+  name                       String
+  summary                    String               @db.Text
+  graduationRequirement      String               @db.Text
+  supportStrength            String?
+  overallWeight              Decimal              @default(0) @db.Decimal(8, 4)
+  processEvaluationRatio     Decimal              @default(0) @db.Decimal(8, 4)
+  resultEvaluationRatio      Decimal              @default(0) @db.Decimal(8, 4)
+  surveyEvaluationRatio      Decimal              @default(1) @db.Decimal(8, 4)
+  otherEvaluationRatio       Decimal              @default(0) @db.Decimal(8, 4)
+  directWeight               Decimal              @default(0.8) @db.Decimal(8, 4)
+  indirectWeight             Decimal              @default(0.2) @db.Decimal(8, 4)
+  course                     Course               @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  methodConfigs              TargetMethodConfig[]
+  scores                     StudentScore[]
+  indirectEvaluation         IndirectEvaluation?
+
+  @@unique([courseId, sortOrder])
+}
+
+model AssessmentMethod {
+  id            String               @id @default(cuid())
+  courseId      String
+  sortOrder     Int
+  name          String
+  category      AssessmentCategory
+  fullScore     Decimal              @default(100) @db.Decimal(8, 2)
+  enabled       Boolean              @default(true)
+  course        Course               @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  targetConfigs TargetMethodConfig[]
+  scores        StudentScore[]
+
+  @@unique([courseId, sortOrder])
+}
+
+model TargetMethodConfig {
+  id         String            @id @default(cuid())
+  courseId   String
+  targetId   String
+  methodId   String
+  weight     Decimal           @default(0) @db.Decimal(8, 4)
+  targetScore Decimal          @default(0) @db.Decimal(8, 2)
+  course     Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  target     CourseTarget      @relation(fields: [targetId], references: [id], onDelete: Cascade)
+  method     AssessmentMethod  @relation(fields: [methodId], references: [id], onDelete: Cascade)
+
+  @@unique([targetId, methodId])
+}
+
+model Student {
+  id         String         @id @default(cuid())
+  courseId   String
+  sortOrder  Int
+  majorName  String?
+  className  String?
+  studentNo  String
+  studentName String
+  course     Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  scores     StudentScore[]
+
+  @@unique([courseId, studentNo])
+}
+
+model ExamQuestion {
+  id         String   @id @default(cuid())
+  courseId   String
+  sortOrder  Int
+  label      String
+  title      String   @db.Text
+  score      Decimal  @default(0) @db.Decimal(8, 2)
+  targetScores Json
+  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, sortOrder])
+}
+
+model StudentScore {
+  id        String           @id @default(cuid())
+  courseId  String
+  studentId String
+  methodId  String
+  targetId  String
+  score     Decimal?         @db.Decimal(8, 2)
+  course    Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  student   Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  method    AssessmentMethod @relation(fields: [methodId], references: [id], onDelete: Cascade)
+  target    CourseTarget     @relation(fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, methodId, targetId])
+}
+
+model IndirectEvaluation {
+  id       String      @id @default(cuid())
+  courseId String
+  targetId String      @unique
+  countA   Int         @default(0)
+  countB   Int         @default(0)
+  countC   Int         @default(0)
+  countD   Int         @default(0)
+  countE   Int         @default(0)
+  course   Course      @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  target   CourseTarget @relation(fields: [targetId], references: [id], onDelete: Cascade)
+}
+
+enum AssessmentCategory {
+  PROCESS
+  RESULT
+  OTHER
+}
