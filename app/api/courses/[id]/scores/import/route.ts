@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { getCourseInputById, saveCourse } from "@/lib/course-repository";
+import { getCourseInputById } from "@/lib/course-repository";
 import { importScoresFromWorkbook } from "@/lib/score-import";
 
 type RouteProps = {
@@ -26,7 +26,6 @@ export async function POST(request: Request, { params }: RouteProps) {
     const buffer = Buffer.from(await file.arrayBuffer());
     const students = await importScoresFromWorkbook(buffer, course);
     const nextCourse = { ...course, students };
-    await saveCourse(nextCourse, id);
 
     return NextResponse.json({
       studentCount: students.length,

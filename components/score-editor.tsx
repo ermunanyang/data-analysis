@@ -241,7 +241,7 @@ export function ScoreEditor({ courseId, initialCourse }: Props) {
               disabled={importing}
               className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700 transition hover:border-slate-400 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {importing ? "导入中..." : "导入同模板 Excel"}
+              {importing ? "导入中..." : "导入成绩"}
             </button>
             <button
               type="button"
