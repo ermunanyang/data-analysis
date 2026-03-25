@@ -4,19 +4,24 @@ import ExcelJS from "exceljs";
 
 import { createEmptyStudent } from "@/lib/course-defaults";
 import type { CourseInput } from "@/lib/course-schema";
+import { getScoreSheetMethodIndexes, SCORE_SHEET_STUDENT_START_ROW } from "@/lib/score-sheet";
 
 function toNumber(value: ExcelJS.CellValue | undefined): number | null {
   if (value === null || value === undefined) return null;
   if (typeof value === "number") return value;
+
   if (typeof value === "string") {
     const normalized = value.trim();
     if (!normalized) return null;
+
     const parsed = Number(normalized);
     return Number.isNaN(parsed) ? null : parsed;
   }
+
   if (typeof value === "object" && "result" in value && typeof value.result === "number") {
     return value.result;
   }
+
   return null;
 }
 
@@ -24,12 +29,20 @@ function toText(value: ExcelJS.CellValue | undefined): string {
   if (value === null || value === undefined) return "";
   if (typeof value === "string") return value.trim();
   if (typeof value === "number") return String(value);
+
   if (typeof value === "object" && "text" in value && typeof value.text === "string") {
     return value.text.trim();
   }
-  if (typeof value === "object" && "result" in value && value.result !== null && value.result !== undefined) {
+
+  if (
+    typeof value === "object" &&
+    "result" in value &&
+    value.result !== null &&
+    value.result !== undefined
+  ) {
     return String(value.result).trim();
   }
+
   return "";
 }
 
@@ -51,8 +64,25 @@ export async function importScoresFromWorkbook(
   const targetCount = course.targets.length;
   const methodBlockWidth = targetCount + 1;
   const students: CourseInput["students"] = [];
+  const methodIndexes = getScoreSheetMethodIndexes(course);
 
-  for (let rowIndex = 10; rowIndex <= worksheet.rowCount; rowIndex += 1) {
+  methodIndexes.forEach((methodIndex, visibleMethodIndex) => {
+    const method = course.methods[methodIndex];
+    const columnIndex = 6 + visibleMethodIndex * methodBlockWidth;
+    const workbookMethodName = toText(worksheet.getRow(6).getCell(columnIndex).value);
+
+    if (workbookMethodName && workbookMethodName !== method.name.trim()) {
+      throw new Error(
+        `导入模板中的第 ${visibleMethodIndex + 1} 个评价方式为“${workbookMethodName}”，与当前课程配置“${method.name}”不一致`,
+      );
+    }
+  });
+
+  for (
+    let rowIndex = SCORE_SHEET_STUDENT_START_ROW;
+    rowIndex <= worksheet.rowCount;
+    rowIndex += 1
+  ) {
     const row = worksheet.getRow(rowIndex);
     const studentNo = toText(row.getCell(4).value);
     const studentName = toText(row.getCell(5).value);
@@ -69,9 +99,9 @@ export async function importScoresFromWorkbook(
     student.majorName = majorName;
     student.className = className;
 
-    course.methods.forEach((_, methodIndex) => {
+    methodIndexes.forEach((methodIndex, visibleMethodIndex) => {
       course.targets.forEach((_, targetIndex) => {
-        const columnIndex = 6 + methodIndex * methodBlockWidth + targetIndex;
+        const columnIndex = 6 + visibleMethodIndex * methodBlockWidth + targetIndex;
         const score = toNumber(row.getCell(columnIndex).value);
         student.scores[String(methodIndex)][String(targetIndex)] = score;
       });
