@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import path from "node:path";
+
 import ExcelJS from "exceljs";
 
 import { calculateCourse } from "@/lib/course-calculator";
@@ -215,48 +218,227 @@ function buildStudentTargetAttainmentSheet(
   });
 }
 
-function buildChartSheet(
+async function loadChartTemplate() {
+  const desktopPath = path.join(process.env.USERPROFILE ?? "C:/Users/admin", "Desktop");
+  const entries = await fs.promises.readdir(desktopPath, { withFileTypes: true });
+  const candidateFiles = entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".xlsx") && !entry.name.startsWith("~$"))
+    .map((entry) => path.join(desktopPath, entry.name));
+
+  for (const filePath of candidateFiles) {
+    const workbook = new ExcelJS.Workbook();
+    try {
+      await workbook.xlsx.readFile(filePath);
+      const worksheet = workbook.getWorksheet("5绘图数据");
+      if (worksheet) {
+        return { worksheet };
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  throw new Error("未找到包含“5绘图数据”工作表的 Excel 模板文件");
+}
+
+function cloneWorksheetStructure(source: ExcelJS.Worksheet, target: ExcelJS.Worksheet) {
+  target.properties = { ...source.properties };
+  target.pageSetup = { ...source.pageSetup };
+  target.headerFooter = { ...source.headerFooter };
+  target.views = source.views.map((view) => ({ ...view }));
+  target.state = source.state;
+
+  source.columns.forEach((column, index) => {
+    const nextColumn = target.getColumn(index + 1);
+    nextColumn.width = column.width;
+    nextColumn.hidden = column.hidden ?? false;
+    nextColumn.outlineLevel = column.outlineLevel ?? 0;
+    nextColumn.style = JSON.parse(JSON.stringify(column.style ?? {}));
+  });
+
+  for (let rowIndex = 1; rowIndex <= source.rowCount; rowIndex += 1) {
+    const sourceRow = source.getRow(rowIndex);
+    const targetRow = target.getRow(rowIndex);
+    targetRow.height = sourceRow.height;
+    targetRow.hidden = sourceRow.hidden ?? false;
+    targetRow.outlineLevel = sourceRow.outlineLevel ?? 0;
+
+    for (let columnIndex = 1; columnIndex <= source.columnCount; columnIndex += 1) {
+      const sourceCell = sourceRow.getCell(columnIndex);
+      const targetCell = targetRow.getCell(columnIndex);
+      targetCell.style = JSON.parse(JSON.stringify(sourceCell.style ?? {}));
+      targetCell.numFmt = sourceCell.numFmt;
+    }
+  }
+
+  const merges = (source as ExcelJS.Worksheet & { _merges?: Record<string, unknown> })._merges ?? {};
+  for (const mergeKey of Object.keys(merges)) {
+    target.mergeCells(mergeKey);
+  }
+}
+
+function clearWorksheetValues(sheet: ExcelJS.Worksheet) {
+  for (let rowIndex = 1; rowIndex <= sheet.rowCount; rowIndex += 1) {
+    for (let columnIndex = 1; columnIndex <= sheet.columnCount; columnIndex += 1) {
+      sheet.getRow(rowIndex).getCell(columnIndex).value = null;
+    }
+  }
+}
+
+function normalizeChartHeader(sheet: ExcelJS.Worksheet) {
+  try {
+    sheet.unMergeCells("M1:T1");
+  } catch {}
+  try {
+    sheet.unMergeCells("M2:T2");
+  } catch {}
+  sheet.mergeCells("M2:T2");
+  sheet.getCell("M2").value = "平均达成度";
+  sheet.getCell("M2").alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+
+  sheet.getCell("C1").value = "   平均达\n     成度\n姓名";
+  sheet.getCell("C1").alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+
+  for (let columnIndex = 13; columnIndex <= 20; columnIndex += 1) {
+    sheet.getCell(1, columnIndex).value =
+      columnIndex < 20 ? `目标${columnIndex - 12}` : "总目标";
+    sheet.getCell(2, columnIndex).value = null;
+  }
+
+  sheet.getRow(4).height = 15;
+}
+
+async function buildChartSheet(
   workbook: ExcelJS.Workbook,
   course: CourseInput,
   calc: ReturnType<typeof calculateCourse>,
 ) {
+  const { worksheet: templateSheet } = await loadChartTemplate();
   const sheet = workbook.addWorksheet("5绘图数据");
-  setColumns(sheet, [10, 18, 16, ...course.targets.map(() => 14), 14, 14]);
-  addHeader(sheet, "绘图数据", `${course.courseName || "未命名课程"} / ${course.className}`);
-  sheet.addRow([
-    "序号",
-    "学号",
-    "姓名",
-    ...course.targets.map((target) => target.name),
-    "总目标",
-    "期望值",
-  ]);
+  cloneWorksheetStructure(templateSheet, sheet);
+  clearWorksheetValues(sheet);
 
-  calc.chartRows.forEach((row) => {
-    sheet.addRow([
-      row.index,
-      row.studentNo,
-      row.studentName,
-      ...row.targetAttainments,
-      row.totalAttainment,
-      row.expectedValue,
-    ]);
+  const fixedTargetCount = 7;
+  const leftStartColumn = 4;
+  const leftTotalColumn = 11;
+  const averageStartColumn = 13;
+  const averageTotalColumn = 20;
+  const expectedColumn = 22;
+  const helperLabelColumn = 24;
+  const helperValueColumn = 25;
+  const helperExpectedColumn = 26;
+  const chartStartRow = 3;
+  const helperStartRow = 4;
+
+  try {
+    sheet.unMergeCells("A1:A2");
+  } catch {}
+  try {
+    sheet.unMergeCells("B1:B2");
+  } catch {}
+  try {
+    sheet.unMergeCells("C1:C2");
+  } catch {}
+  sheet.mergeCells("A1:A2");
+  sheet.mergeCells("B1:B2");
+  sheet.mergeCells("C1:C2");
+
+  sheet.getCell("A1").value = "序号";
+  sheet.getCell("B1").value = "学号";
+  sheet.getCell("C1").value = "   平均达\n     成度\n姓名";
+  sheet.getCell("C1").alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+
+  for (let index = 0; index < fixedTargetCount; index += 1) {
+    sheet.getCell(1, leftStartColumn + index).value = `目标${index + 1}`;
+    sheet.getCell(1, averageStartColumn + index).value = `目标${index + 1}`;
+  }
+  sheet.getCell(1, leftTotalColumn).value = "总目标";
+  sheet.getCell(1, averageTotalColumn).value = "总目标";
+  sheet.getCell(1, expectedColumn).value = "期望值";
+  sheet.getCell("M2").value = "平均达成度";
+
+  const averageValues = Array.from({ length: fixedTargetCount }, (_, index) =>
+    calc.averages.targetAverages[index] ?? 0,
+  );
+
+  averageValues.forEach((value, index) => {
+    sheet.getCell(2, leftStartColumn + index).value = value;
+    sheet.getCell(2, leftStartColumn + index).numFmt = "0.00";
+    sheet.getCell(2, averageStartColumn + index).value = value;
+    sheet.getCell(2, averageStartColumn + index).numFmt = "0.00";
+  });
+  sheet.getCell(2, leftTotalColumn).value = calc.averages.totalAverage;
+  sheet.getCell(2, leftTotalColumn).numFmt = "0.00";
+  sheet.getCell(2, averageTotalColumn).value = calc.averages.totalAverage;
+  sheet.getCell(2, averageTotalColumn).numFmt = "0.00";
+
+  calc.chartRows.forEach((chartRow, index) => {
+    const rowIndex = chartStartRow + index;
+    sheet.getRow(rowIndex).height = 15;
+    sheet.getCell(rowIndex, 1).value = index;
+    sheet.getCell(rowIndex, 2).value = chartRow.studentNo;
+    sheet.getCell(rowIndex, 3).value = chartRow.studentName;
+
+    for (let targetIndex = 0; targetIndex < fixedTargetCount; targetIndex += 1) {
+      const targetValue = chartRow.targetAttainments[targetIndex] ?? 0;
+      sheet.getCell(rowIndex, leftStartColumn + targetIndex).value = targetValue;
+      sheet.getCell(rowIndex, leftStartColumn + targetIndex).numFmt = "0.00";
+      sheet.getCell(rowIndex, averageStartColumn + targetIndex).value = averageValues[targetIndex];
+      sheet.getCell(rowIndex, averageStartColumn + targetIndex).numFmt = "0.00";
+    }
+
+    sheet.getCell(rowIndex, leftTotalColumn).value = chartRow.totalAttainment;
+    sheet.getCell(rowIndex, leftTotalColumn).numFmt = "0.00";
+    sheet.getCell(rowIndex, averageTotalColumn).value = calc.averages.totalAverage;
+    sheet.getCell(rowIndex, averageTotalColumn).numFmt = "0.00";
+    sheet.getCell(rowIndex, expectedColumn).value = course.expectedValue;
+    sheet.getCell(rowIndex, expectedColumn).numFmt = "0.00";
   });
 
-  sheet.addRow([]);
-  sheet.addRow([
-    "平均达成度",
-    "",
-    "",
-    ...calc.averages.targetAverages,
-    calc.averages.totalAverage,
-    course.expectedValue,
-  ]);
+  const helperLabels = [
+    ...Array.from(
+      { length: fixedTargetCount },
+      (_, index) => course.targets[index]?.name ?? `课程目标${index + 1}`,
+    ),
+    "课程总目标",
+  ];
+  const helperValues = [
+    ...Array.from(
+      { length: fixedTargetCount },
+      (_, index) => calc.targetSummaries[index]?.finalAttainment ?? 0,
+    ),
+    calc.targetSummaries.reduce(
+      (sum, summary, index) =>
+        sum + summary.finalAttainment * (course.targets[index]?.overallWeight ?? 0),
+      0,
+    ),
+  ];
+
+  helperLabels.forEach((label, index) => {
+    const rowIndex = helperStartRow + index;
+    sheet.getCell(rowIndex, helperLabelColumn).value = label;
+    sheet.getCell(rowIndex, helperValueColumn).value = helperValues[index];
+    sheet.getCell(rowIndex, helperValueColumn).numFmt = "0.00";
+    sheet.getCell(rowIndex, helperExpectedColumn).value = course.expectedValue;
+    sheet.getCell(rowIndex, helperExpectedColumn).numFmt = "0.00";
+  });
+
+  for (let rowIndex = 1; rowIndex <= 4; rowIndex += 1) {
+    for (let columnIndex = 1; columnIndex <= sheet.columnCount; columnIndex += 1) {
+      sheet.getRow(rowIndex).getCell(columnIndex).alignment = {
+        horizontal: "center",
+        vertical: "middle",
+        wrapText: true,
+      };
+    }
+  }
+
+  normalizeChartHeader(sheet);
 }
 
 function applyDefaultSheetStyling(workbook: ExcelJS.Workbook) {
   workbook.worksheets.forEach((sheet) => {
-    if (sheet.name === "4学生课程目标达成度") {
+    if (sheet.name === "4学生课程目标达成度" || sheet.name === "5绘图数据") {
       return;
     }
 
@@ -268,11 +450,10 @@ function applyDefaultSheetStyling(workbook: ExcelJS.Workbook) {
           bottom: { style: "thin", color: { argb: "FFD3D7DE" } },
           right: { style: "thin", color: { argb: "FFD3D7DE" } },
         };
-        if (rowNumber <= 4) {
-          cell.alignment = { vertical: "middle", horizontal: "left" };
-        } else {
-          cell.alignment = { vertical: "middle", horizontal: "center" };
-        }
+        cell.alignment =
+          rowNumber <= 4
+            ? { vertical: "middle", horizontal: "left" }
+            : { vertical: "middle", horizontal: "center" };
       });
     });
   });
@@ -298,7 +479,7 @@ export async function exportWorkbook(
   }
 
   if (kind === "5") {
-    buildChartSheet(workbook, course, calc);
+    await buildChartSheet(workbook, course, calc);
   }
 
   applyDefaultSheetStyling(workbook);

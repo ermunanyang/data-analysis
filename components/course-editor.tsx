@@ -26,9 +26,10 @@ const steps: StepItem[] = [
   { title: "一、课程基本信息", hint: "录入课程名称、编码、学期、班级、教师等基础信息。" },
   { title: "二、课程目标与毕业要求的对应关系", hint: "支持新增、删除课程目标，并维护毕业要求与支撑强度。" },
   { title: "三、课程目标评价方式", hint: "按 Excel 结构维护过程性、直接、间接和综合评价构成及比例。" },
-  { title: "四、考试试题对应课程分目标", hint: "按题号与分值维护各课程目标对应试题，可新增和删除。" },
-  { title: "五、课程目标达成度目标分值", hint: "过程性评价目标分值可自动生成，生成后仍可继续编辑。" },
-  { title: "六、课程分目标权重", hint: "维护课程目标权重，并填写教师分析、问题和改进措施。" },
+  { title: "四、间接评价", hint: "按课程目标录入问卷 A/B/C/D/E 人数，并实时预览间接评价达成度。" },
+  { title: "五、考试试题对应课程分目标", hint: "按题号与分值维护各课程目标对应试题，可新增和删除。" },
+  { title: "六、课程目标达成度目标分值", hint: "过程性评价目标分值可自动生成，生成后仍可继续编辑。" },
+  { title: "七、课程分目标权重", hint: "维护课程目标权重，并填写教师分析、问题和改进措施。" },
 ];
 
 const inputClass =
@@ -119,6 +120,61 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
     const targets = [...course.targets];
     targets[index] = { ...targets[index], [key]: value };
     patch({ targets });
+  }
+
+  function getIndirectEvaluation(targetIndex: number) {
+    return (
+      course.indirectEvaluations.find((item) => item.targetIndex === targetIndex) ?? {
+        targetIndex,
+        countA: 0,
+        countB: 0,
+        countC: 0,
+        countD: 0,
+        countE: 0,
+      }
+    );
+  }
+
+  function updateIndirectEvaluation(
+    targetIndex: number,
+    key: "countA" | "countB" | "countC" | "countD" | "countE",
+    value: number,
+  ) {
+    const nextValue = Math.max(0, Number.isFinite(value) ? Math.trunc(value) : 0);
+    const exists = course.indirectEvaluations.some((item) => item.targetIndex === targetIndex);
+    const indirectEvaluations = exists
+      ? course.indirectEvaluations.map((item) =>
+          item.targetIndex === targetIndex ? { ...item, [key]: nextValue } : item,
+        )
+      : [
+          ...course.indirectEvaluations,
+          {
+            targetIndex,
+            countA: 0,
+            countB: 0,
+            countC: 0,
+            countD: 0,
+            countE: 0,
+            [key]: nextValue,
+          },
+        ];
+
+    patch({ indirectEvaluations });
+  }
+
+  function calculateSurveyAttainment(targetIndex: number) {
+    const row = getIndirectEvaluation(targetIndex);
+    const total = row.countA + row.countB + row.countC + row.countD + row.countE;
+    if (total === 0) return 0;
+
+    return round(
+      (row.countA * 1 +
+        row.countB * 0.8 +
+        row.countC * 0.6 +
+        row.countD * 0.4 +
+        row.countE * 0.2) /
+        total,
+    );
   }
 
   function updateMethod(index: number, key: "name" | "fullScore", value: string | number) {
@@ -1055,8 +1111,105 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
 
       {currentStep === 3 ? (
         <section className={`${sectionClass} space-y-4`}>
+          <div className="space-y-2">
+            <h2 className="text-xl font-semibold">2. 间接评价</h2>
+            <p className="text-sm text-slate-500">
+              当前版本先支持“学生调查问卷”链路，其它评价暂未启用，默认按 0 处理。
+            </p>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="min-w-full border-separate border-spacing-0 text-sm">
+              <thead>
+                <tr className="bg-slate-100">
+                  <TH>课程目标</TH>
+                  <TH>A 完全达成</TH>
+                  <TH>B 达成</TH>
+                  <TH>C 基本达成</TH>
+                  <TH>D 较低达成</TH>
+                  <TH>E 未达成</TH>
+                  <TH>问卷达成度</TH>
+                  <TH>间接评价达成度</TH>
+                </tr>
+              </thead>
+              <tbody>
+                {course.targets.map((target, targetIndex) => {
+                  const row = getIndirectEvaluation(targetIndex);
+                  const surveyAttainment = calculateSurveyAttainment(targetIndex);
+                  const indirectAttainment = preview.targetSummaries[targetIndex]?.indirectAttainment ?? 0;
+
+                  return (
+                    <tr key={target.name}>
+                      <TD className="text-center align-middle">{target.name}</TD>
+                      <TD>
+                        <input
+                          className={`${inputClass} text-center`}
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={row.countA}
+                          onChange={(e) => updateIndirectEvaluation(targetIndex, "countA", Number(e.target.value))}
+                        />
+                      </TD>
+                      <TD>
+                        <input
+                          className={`${inputClass} text-center`}
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={row.countB}
+                          onChange={(e) => updateIndirectEvaluation(targetIndex, "countB", Number(e.target.value))}
+                        />
+                      </TD>
+                      <TD>
+                        <input
+                          className={`${inputClass} text-center`}
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={row.countC}
+                          onChange={(e) => updateIndirectEvaluation(targetIndex, "countC", Number(e.target.value))}
+                        />
+                      </TD>
+                      <TD>
+                        <input
+                          className={`${inputClass} text-center`}
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={row.countD}
+                          onChange={(e) => updateIndirectEvaluation(targetIndex, "countD", Number(e.target.value))}
+                        />
+                      </TD>
+                      <TD>
+                        <input
+                          className={`${inputClass} text-center`}
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={row.countE}
+                          onChange={(e) => updateIndirectEvaluation(targetIndex, "countE", Number(e.target.value))}
+                        />
+                      </TD>
+                      <TD className="text-center align-middle font-medium text-slate-700">
+                        {formatDecimal(surveyAttainment)}
+                      </TD>
+                      <TD className="text-center align-middle font-medium text-sky-700">
+                        {formatDecimal(indirectAttainment)}
+                      </TD>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
+
+      {currentStep === 4 ? (
+        <section className={`${sectionClass} space-y-4`}>
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-xl font-semibold">{steps[3].title}</h2>
+            <h2 className="text-xl font-semibold">{steps[4].title}</h2>
             <button type="button" onClick={addExamQuestion} className="rounded-full border border-slate-300 px-4 py-2 text-sm">
               新增列
             </button>
@@ -1156,10 +1309,10 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
         </section>
       ) : null}
 
-      {currentStep === 4 ? (
+      {currentStep === 5 ? (
         <section className={`${sectionClass} space-y-4`}>
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-xl font-semibold">{steps[4].title}</h2>
+            <h2 className="text-xl font-semibold">{steps[5].title}</h2>
             <button type="button" onClick={autoGenerateProcessTargetScores} className="rounded-full border border-slate-300 px-4 py-2 text-sm">
               自动生成过程性目标分值
             </button>
@@ -1245,9 +1398,9 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
         </section>
       ) : null}
 
-      {currentStep === 5 ? (
+      {currentStep === 6 ? (
         <section className={`${sectionClass} space-y-6`}>
-          <h2 className="text-xl font-semibold">{steps[5].title}</h2>
+          <h2 className="text-xl font-semibold">{steps[6].title}</h2>
           <div className="overflow-x-auto">
             <table className="min-w-full max-w-xl border-separate border-spacing-0 text-center text-sm">
               <thead>
@@ -1312,6 +1465,10 @@ function getConfig(course: CourseInput, targetIndex: number, methodIndex: number
 
 function round(value: number) {
   return Number(value.toFixed(4));
+}
+
+function formatDecimal(value: number) {
+  return value.toFixed(2);
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

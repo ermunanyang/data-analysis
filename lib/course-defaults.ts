@@ -275,10 +275,23 @@ export function normalizeStudentRows(input: CourseInput): CourseInput {
     indirectWeight: target.indirectWeight ?? input.indirectWeight ?? 0.2,
   }));
 
+  const indirectEvaluations = Array.from({ length: targetCount }, (_, targetIndex) => {
+    const row = sanitizedInput.indirectEvaluations.find((item) => item.targetIndex === targetIndex);
+    return {
+      targetIndex,
+      countA: row?.countA ?? 0,
+      countB: row?.countB ?? 0,
+      countC: row?.countC ?? 0,
+      countD: row?.countD ?? 0,
+      countE: row?.countE ?? 0,
+    };
+  });
+
   const normalizedInput: CourseInput = {
     ...sanitizedInput,
     targets,
     examQuestions,
+    indirectEvaluations,
     students,
   };
 

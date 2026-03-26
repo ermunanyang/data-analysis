@@ -23,6 +23,8 @@ export async function GET(_request: Request, { params }: RouteProps) {
   const fileName =
     kind === "4"
       ? `${course.courseName || "课程"}课程目标达成度.xlsx`
+      : kind === "5"
+        ? `${course.courseName || "课程"}绘图数据.xlsx`
       : `${course.courseName || "课程"}-${kind}.xlsx`;
   const body = new Uint8Array(buffer);
 
