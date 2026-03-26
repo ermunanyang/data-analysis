@@ -12,6 +12,7 @@
     "@prisma/adapter-mariadb": "^7.5.0",
     "@prisma/client": "^7.5.0",
     "exceljs": "^4.4.0",
+    "jszip": "^3.10.1",
     "mariadb": "^3.5.2",
     "next": "16.2.1",
     "prisma": "^7.5.0",
