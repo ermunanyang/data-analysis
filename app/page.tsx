@@ -81,7 +81,7 @@ export default async function HomePage() {
                   href={`/api/courses/${course.id}/export/4`}
                   className="rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                 >
-                  导出 4
+                  导出课程目标达成度
                 </a>
                 <a
                   href={`/api/courses/${course.id}/export/5`}

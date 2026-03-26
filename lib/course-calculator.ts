@@ -44,7 +44,6 @@ export type CourseCalculation = {
   };
 };
 
-const clamp = (value: number, min = 0, max = 1) => Math.min(max, Math.max(min, value));
 const round = (value: number) => Number(value.toFixed(4));
 
 function getConfig(input: CourseInput, targetIndex: number, methodIndex: number) {
@@ -79,6 +78,29 @@ function calculateIndirect(input: CourseInput, targetIndex: number) {
   );
 }
 
+function getNormalizedProcessWeight(
+  input: CourseInput,
+  targetIndex: number,
+  methodIndex: number,
+) {
+  const processConfigs = input.targetMethodConfigs.filter((config) => {
+    const method = input.methods[config.methodIndex];
+    return (
+      config.targetIndex === targetIndex &&
+      method?.enabled &&
+      method.category === "PROCESS"
+    );
+  });
+
+  const totalWeight = processConfigs.reduce((sum, config) => sum + config.weight, 0);
+  if (totalWeight <= 0) {
+    return 0;
+  }
+
+  const config = processConfigs.find((item) => item.methodIndex === methodIndex);
+  return config ? config.weight / totalWeight : 0;
+}
+
 function isStudentFilled(student: CourseInput["students"][number]) {
   return Boolean(student.studentNo.trim() || student.studentName.trim());
 }
@@ -109,7 +131,8 @@ export function calculateCourse(input: CourseInput): CourseCalculation {
           return sum;
         }
 
-        return sum + clamp(raw / config.targetScore) * config.weight;
+        const normalizedWeight = getNormalizedProcessWeight(input, targetIndex, methodIndex);
+        return sum + (raw / config.targetScore) * normalizedWeight;
       }, 0);
 
       const resultMethodIndex = input.methods.findIndex(
@@ -127,7 +150,7 @@ export function calculateCourse(input: CourseInput): CourseCalculation {
         resultRaw !== null &&
         resultRaw !== undefined &&
         resultConfig.targetScore > 0
-          ? clamp(resultRaw / resultConfig.targetScore)
+          ? resultRaw / resultConfig.targetScore
           : 0;
 
       const attainment = round(

@@ -20,7 +20,10 @@ export async function GET(_request: Request, { params }: RouteProps) {
   }
 
   const buffer = await exportWorkbook(course, kind as "3" | "4" | "5");
-  const fileName = `${course.courseName || "课程"}-${kind}.xlsx`;
+  const fileName =
+    kind === "4"
+      ? `${course.courseName || "课程"}课程目标达成度.xlsx`
+      : `${course.courseName || "课程"}-${kind}.xlsx`;
   const body = new Uint8Array(buffer);
 
   return new NextResponse(body, {
