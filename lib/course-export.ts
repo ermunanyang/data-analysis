@@ -2,19 +2,45 @@ import fs from "node:fs";
 import path from "node:path";
 
 import ExcelJS from "exceljs";
+import JSZip from "jszip";
 
 import { calculateCourse } from "@/lib/course-calculator";
 import type { CourseInput } from "@/lib/course-schema";
 
-function addHeader(sheet: ExcelJS.Worksheet, title: string, subtitle?: string) {
-  sheet.addRow([title]);
-  sheet.getRow(sheet.rowCount).font = { size: 16, bold: true };
-  if (subtitle) {
-    sheet.addRow([subtitle]);
-    sheet.getRow(sheet.rowCount).font = { color: { argb: "FF5F6B7A" } };
-  }
-  sheet.addRow([]);
-}
+type ProcessMethod = {
+  index: number;
+  name: string;
+  category: "PROCESS" | "RESULT" | "OTHER";
+  fullScore: number;
+  enabled: boolean;
+};
+
+type ReportProcessItem = {
+  name: string;
+  weight: number;
+  targetScore: number;
+  averageScore: number;
+  attainment: number;
+};
+
+type ReportTargetSummary = {
+  targetName: string;
+  processItems: ReportProcessItem[];
+  resultWeight: number;
+  resultTargetScore: number;
+  resultAverageScore: number;
+  resultAttainment: number;
+  indirectWeight: number;
+  indirectAverageScore: number;
+  indirectAttainment: number;
+  overallWeight: number;
+  finalAttainment: number;
+};
+
+type ReportExportData = {
+  targetSummaries: ReportTargetSummary[];
+  courseFinalAttainment: number;
+};
 
 function setColumns(sheet: ExcelJS.Worksheet, widths: number[]) {
   sheet.columns = widths.map((width) => ({ width }));
@@ -48,56 +74,192 @@ function setCellAlignment(
   cell.alignment = { horizontal, vertical, wrapText };
 }
 
-function getVisibleMethods(course: CourseInput) {
-  const processMethods = course.methods.filter(
-    (method) => method.enabled && method.category === "PROCESS",
-  );
-  const resultMethod = course.methods.find(
-    (method) => method.enabled && method.category === "RESULT",
-  );
-  return resultMethod ? [...processMethods, resultMethod] : processMethods;
+function round(value: number, digits = 4) {
+  return Number(value.toFixed(digits));
 }
 
-function buildCourseAnalysisSheet(
-  workbook: ExcelJS.Workbook,
-  course: CourseInput,
-  calc: ReturnType<typeof calculateCourse>,
-) {
-  const sheet = workbook.addWorksheet("3课程达成度分析报告");
-  setColumns(sheet, [18, 18, 18, 18, 18, 18]);
-  addHeader(
-    sheet,
-    `${course.courseName || "未命名课程"}课程目标达成度分析报告`,
-    `${course.semester} / ${course.className}`,
+function escapeXml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+function stripCellType(attrs: string) {
+  return attrs.replace(/\s+t="[^"]*"/g, "");
+}
+
+function setXmlCellValue(xml: string, cellRef: string, value: string | number | null) {
+  const escapedRef = cellRef.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const fullTagPattern = new RegExp(`<c([^>]*\\br="${escapedRef}"[^>]*)>([\\s\\S]*?)</c>`);
+  const emptyTagPattern = new RegExp(`<c([^>]*\\br="${escapedRef}"[^>]*)\\s*/>`);
+
+  const replacer = (_match: string, attrs: string) => {
+    const safeAttrs = stripCellType(attrs);
+    if (value === null || value === "") {
+      return `<c${safeAttrs}/>`;
+    }
+
+    if (typeof value === "number") {
+      return `<c${safeAttrs}><v>${value}</v></c>`;
+    }
+
+    return `<c${safeAttrs} t="inlineStr"><is><t xml:space="preserve">${escapeXml(value)}</t></is></c>`;
+  };
+
+  if (emptyTagPattern.test(xml)) {
+    return xml.replace(emptyTagPattern, replacer);
+  }
+
+  if (fullTagPattern.test(xml)) {
+    return xml.replace(fullTagPattern, replacer);
+  }
+
+  return xml;
+}
+
+function setXmlCells(xml: string, entries: Array<[string, string | number | null]>) {
+  return entries.reduce((current, [cellRef, value]) => setXmlCellValue(current, cellRef, value), xml);
+}
+
+function isStudentFilled(student: CourseInput["students"][number]) {
+  return Boolean(student.studentNo.trim() || student.studentName.trim());
+}
+
+function getMethodSets(course: CourseInput) {
+  const processMethods = course.methods
+    .map((method, index) => ({ ...method, index }))
+    .filter((method) => method.enabled && method.category === "PROCESS") as ProcessMethod[];
+
+  const resultMethod = course.methods
+    .map((method, index) => ({ ...method, index }))
+    .find((method) => method.enabled && method.category === "RESULT") as
+    | ProcessMethod
+    | undefined;
+
+  return { processMethods, resultMethod };
+}
+
+function getConfig(input: CourseInput, targetIndex: number, methodIndex: number) {
+  return (
+    input.targetMethodConfigs.find(
+      (item) => item.targetIndex === targetIndex && item.methodIndex === methodIndex,
+    ) ?? { weight: 0, targetScore: 0 }
   );
+}
 
-  sheet.addRows([
-    ["课程名称", course.courseName, "课程编码", course.courseCode, "开课学期", course.semester],
-    ["课程类别", course.courseType, "专业", course.major, "开课学院（部）", course.department],
-    ["班级", course.className, "任课教师", course.teacherNames, "课程负责人", course.ownerTeacher],
-    ["选课人数", course.selectedCount, "参评人数", course.evaluatedCount, "期望值", course.expectedValue],
-    [],
-    ["课程目标", "直接评价", "间接评价", "综合达成度", "期望值", "是否达标"],
-  ]);
+function getAverageStudentScore(course: CourseInput, methodIndex: number, targetIndex: number) {
+  const activeStudents = course.students.filter(isStudentFilled);
+  if (activeStudents.length === 0) {
+    return 0;
+  }
 
-  calc.targetSummaries.forEach((summary) => {
-    sheet.addRow([
-      summary.targetName,
-      summary.directAttainment,
-      summary.indirectAttainment,
-      summary.finalAttainment,
-      summary.expectedValue,
-      summary.finalAttainment >= summary.expectedValue ? "达标" : "待改进",
-    ]);
+  const values = activeStudents
+    .map((student) => student.scores[String(methodIndex)]?.[String(targetIndex)])
+    .filter((value): value is number => typeof value === "number");
+
+  if (values.length === 0) {
+    return 0;
+  }
+
+  return round(values.reduce((sum, value) => sum + value, 0) / activeStudents.length);
+}
+
+function calculateIndirectAttainment(course: CourseInput, targetIndex: number) {
+  const row = course.indirectEvaluations.find((item) => item.targetIndex === targetIndex);
+  if (!row) {
+    return 0;
+  }
+
+  const total = row.countA + row.countB + row.countC + row.countD + row.countE;
+  if (total === 0) {
+    return 0;
+  }
+
+  const surveyScore =
+    (row.countA * 1 +
+      row.countB * 0.8 +
+      row.countC * 0.6 +
+      row.countD * 0.4 +
+      row.countE * 0.2) /
+    total;
+
+  const target = course.targets[targetIndex];
+  return round(
+    surveyScore * (target?.surveyEvaluationRatio ?? 0) +
+      0 * (target?.otherEvaluationRatio ?? 0),
+  );
+}
+
+function buildReportExportData(course: CourseInput): ReportExportData {
+  const { processMethods, resultMethod } = getMethodSets(course);
+
+  const targetSummaries = course.targets.map((target, targetIndex) => {
+    const processItems = Array.from({ length: 4 }, (_, slotIndex) => {
+      const method = processMethods[slotIndex];
+      if (!method) {
+        return {
+          name: slotIndex === 0 ? "0" : "",
+          weight: 0,
+          targetScore: 0,
+          averageScore: 0,
+          attainment: 0,
+        };
+      }
+
+      const config = getConfig(course, targetIndex, method.index);
+      const averageScore = getAverageStudentScore(course, method.index, targetIndex);
+      const attainment = config.targetScore > 0 ? round(averageScore / config.targetScore) : 0;
+
+      return {
+        name: method.name,
+        weight: config.weight,
+        targetScore: config.targetScore,
+        averageScore,
+        attainment,
+      };
+    });
+
+    const resultConfig =
+      resultMethod ? getConfig(course, targetIndex, resultMethod.index) : { targetScore: 0 };
+    const resultAverageScore =
+      resultMethod ? getAverageStudentScore(course, resultMethod.index, targetIndex) : 0;
+    const resultAttainment =
+      resultConfig.targetScore > 0 ? round(resultAverageScore / resultConfig.targetScore) : 0;
+    const indirectWeight = round(target.surveyEvaluationRatio + target.otherEvaluationRatio);
+    const indirectAverageScore = calculateIndirectAttainment(course, targetIndex);
+
+    const finalAttainment = round(
+      processItems.reduce((sum, item) => sum + item.attainment * item.weight, 0) +
+        resultAttainment * target.resultEvaluationRatio +
+        indirectAverageScore * indirectWeight,
+    );
+
+    return {
+      targetName: target.name,
+      processItems,
+      resultWeight: target.resultEvaluationRatio,
+      resultTargetScore: resultConfig.targetScore,
+      resultAverageScore,
+      resultAttainment,
+      indirectWeight,
+      indirectAverageScore,
+      indirectAttainment: indirectAverageScore,
+      overallWeight: target.overallWeight,
+      finalAttainment,
+    };
   });
 
-  sheet.addRows([
-    [],
-    ["课程分析", course.reportTexts.analysisText],
-    ["存在问题", course.reportTexts.problemText],
-    ["改进措施", course.reportTexts.improvementText],
-    ["教师评价", course.reportTexts.teacherComment],
-  ]);
+  const courseFinalAttainment = round(
+    targetSummaries.reduce(
+      (sum, summary) => sum + summary.finalAttainment * summary.overallWeight,
+      0,
+    ),
+  );
+
+  return { targetSummaries, courseFinalAttainment };
 }
 
 function buildStudentTargetAttainmentSheet(
@@ -106,7 +268,8 @@ function buildStudentTargetAttainmentSheet(
   calc: ReturnType<typeof calculateCourse>,
 ) {
   const sheet = workbook.addWorksheet("4学生课程目标达成度");
-  const visibleMethods = getVisibleMethods(course);
+  const { processMethods, resultMethod } = getMethodSets(course);
+  const visibleMethods = resultMethod ? [...processMethods, resultMethod] : processMethods;
   const attainmentColumnIndex = 5 + visibleMethods.length;
   const totalColumnIndex = attainmentColumnIndex + 1;
   const columnCount = totalColumnIndex;
@@ -218,7 +381,7 @@ function buildStudentTargetAttainmentSheet(
   });
 }
 
-async function loadChartTemplate() {
+async function loadStandaloneChartTemplate() {
   const desktopPath = path.join(process.env.USERPROFILE ?? "C:/Users/admin", "Desktop");
   const entries = await fs.promises.readdir(desktopPath, { withFileTypes: true });
   const candidateFiles = entries
@@ -231,7 +394,7 @@ async function loadChartTemplate() {
       await workbook.xlsx.readFile(filePath);
       const worksheet = workbook.getWorksheet("5绘图数据");
       if (worksheet) {
-        return { worksheet };
+        return worksheet;
       }
     } catch {
       continue;
@@ -285,7 +448,7 @@ function clearWorksheetValues(sheet: ExcelJS.Worksheet) {
   }
 }
 
-function normalizeChartHeader(sheet: ExcelJS.Worksheet) {
+function normalizeStandaloneChartHeader(sheet: ExcelJS.Worksheet) {
   try {
     sheet.unMergeCells("M1:T1");
   } catch {}
@@ -295,145 +458,109 @@ function normalizeChartHeader(sheet: ExcelJS.Worksheet) {
   sheet.mergeCells("M2:T2");
   sheet.getCell("M2").value = "平均达成度";
   sheet.getCell("M2").alignment = { horizontal: "center", vertical: "middle", wrapText: true };
-
   sheet.getCell("C1").value = "   平均达\n     成度\n姓名";
   sheet.getCell("C1").alignment = { horizontal: "center", vertical: "middle", wrapText: true };
-
-  for (let columnIndex = 13; columnIndex <= 20; columnIndex += 1) {
-    sheet.getCell(1, columnIndex).value =
-      columnIndex < 20 ? `目标${columnIndex - 12}` : "总目标";
-    sheet.getCell(2, columnIndex).value = null;
-  }
-
   sheet.getRow(4).height = 15;
 }
 
-async function buildChartSheet(
-  workbook: ExcelJS.Workbook,
+function fillStandaloneChartSheet(
+  sheet: ExcelJS.Worksheet,
   course: CourseInput,
   calc: ReturnType<typeof calculateCourse>,
+  report: ReportExportData,
 ) {
-  const { worksheet: templateSheet } = await loadChartTemplate();
-  const sheet = workbook.addWorksheet("5绘图数据");
-  cloneWorksheetStructure(templateSheet, sheet);
-  clearWorksheetValues(sheet);
-
-  const fixedTargetCount = 7;
-  const leftStartColumn = 4;
-  const leftTotalColumn = 11;
-  const averageStartColumn = 13;
-  const averageTotalColumn = 20;
-  const expectedColumn = 22;
-  const helperLabelColumn = 24;
-  const helperValueColumn = 25;
-  const helperExpectedColumn = 26;
-  const chartStartRow = 3;
-  const helperStartRow = 4;
-
-  try {
-    sheet.unMergeCells("A1:A2");
-  } catch {}
-  try {
-    sheet.unMergeCells("B1:B2");
-  } catch {}
-  try {
-    sheet.unMergeCells("C1:C2");
-  } catch {}
-  sheet.mergeCells("A1:A2");
-  sheet.mergeCells("B1:B2");
-  sheet.mergeCells("C1:C2");
+  const targetAverageCount = 7;
+  const averageValues = Array.from({ length: targetAverageCount }, (_, index) =>
+    calc.averages.targetAverages[index] ?? 0,
+  );
 
   sheet.getCell("A1").value = "序号";
   sheet.getCell("B1").value = "学号";
   sheet.getCell("C1").value = "   平均达\n     成度\n姓名";
-  sheet.getCell("C1").alignment = { horizontal: "center", vertical: "middle", wrapText: true };
-
-  for (let index = 0; index < fixedTargetCount; index += 1) {
-    sheet.getCell(1, leftStartColumn + index).value = `目标${index + 1}`;
-    sheet.getCell(1, averageStartColumn + index).value = `目标${index + 1}`;
-  }
-  sheet.getCell(1, leftTotalColumn).value = "总目标";
-  sheet.getCell(1, averageTotalColumn).value = "总目标";
-  sheet.getCell(1, expectedColumn).value = "期望值";
+  sheet.getCell("K1").value = "总目标";
+  sheet.getCell("T1").value = "总目标";
+  sheet.getCell("U1").value = "期望值";
   sheet.getCell("M2").value = "平均达成度";
 
-  const averageValues = Array.from({ length: fixedTargetCount }, (_, index) =>
-    calc.averages.targetAverages[index] ?? 0,
-  );
+  for (let index = 0; index < targetAverageCount; index += 1) {
+    sheet.getCell(1, 4 + index).value = `目标${index + 1}`;
+    sheet.getCell(1, 13 + index).value = `目标${index + 1}`;
+    sheet.getCell(2, 4 + index).value = averageValues[index];
+    sheet.getCell(2, 4 + index).numFmt = "0.00";
+  }
 
-  averageValues.forEach((value, index) => {
-    sheet.getCell(2, leftStartColumn + index).value = value;
-    sheet.getCell(2, leftStartColumn + index).numFmt = "0.00";
-    sheet.getCell(2, averageStartColumn + index).value = value;
-    sheet.getCell(2, averageStartColumn + index).numFmt = "0.00";
-  });
-  sheet.getCell(2, leftTotalColumn).value = calc.averages.totalAverage;
-  sheet.getCell(2, leftTotalColumn).numFmt = "0.00";
-  sheet.getCell(2, averageTotalColumn).value = calc.averages.totalAverage;
-  sheet.getCell(2, averageTotalColumn).numFmt = "0.00";
+  sheet.getCell("K2").value = calc.averages.totalAverage;
+  sheet.getCell("K2").numFmt = "0.00";
 
-  calc.chartRows.forEach((chartRow, index) => {
-    const rowIndex = chartStartRow + index;
+  calc.chartRows.forEach((row, index) => {
+    const rowIndex = 3 + index;
     sheet.getRow(rowIndex).height = 15;
-    sheet.getCell(rowIndex, 1).value = index;
-    sheet.getCell(rowIndex, 2).value = chartRow.studentNo;
-    sheet.getCell(rowIndex, 3).value = chartRow.studentName;
+    sheet.getCell(`A${rowIndex}`).value = index;
+    sheet.getCell(`B${rowIndex}`).value = row.studentNo;
+    sheet.getCell(`C${rowIndex}`).value = row.studentName;
 
-    for (let targetIndex = 0; targetIndex < fixedTargetCount; targetIndex += 1) {
-      const targetValue = chartRow.targetAttainments[targetIndex] ?? 0;
-      sheet.getCell(rowIndex, leftStartColumn + targetIndex).value = targetValue;
-      sheet.getCell(rowIndex, leftStartColumn + targetIndex).numFmt = "0.00";
-      sheet.getCell(rowIndex, averageStartColumn + targetIndex).value = averageValues[targetIndex];
-      sheet.getCell(rowIndex, averageStartColumn + targetIndex).numFmt = "0.00";
+    for (let targetIndex = 0; targetIndex < targetAverageCount; targetIndex += 1) {
+      const targetValue = row.targetAttainments[targetIndex] ?? 0;
+      sheet.getCell(rowIndex, 4 + targetIndex).value = targetValue;
+      sheet.getCell(rowIndex, 4 + targetIndex).numFmt = "0.00";
+      sheet.getCell(rowIndex, 13 + targetIndex).value = averageValues[targetIndex];
+      sheet.getCell(rowIndex, 13 + targetIndex).numFmt = "0.00";
     }
 
-    sheet.getCell(rowIndex, leftTotalColumn).value = chartRow.totalAttainment;
-    sheet.getCell(rowIndex, leftTotalColumn).numFmt = "0.00";
-    sheet.getCell(rowIndex, averageTotalColumn).value = calc.averages.totalAverage;
-    sheet.getCell(rowIndex, averageTotalColumn).numFmt = "0.00";
-    sheet.getCell(rowIndex, expectedColumn).value = course.expectedValue;
-    sheet.getCell(rowIndex, expectedColumn).numFmt = "0.00";
+    sheet.getCell(`K${rowIndex}`).value = row.totalAttainment;
+    sheet.getCell(`K${rowIndex}`).numFmt = "0.00";
+    sheet.getCell(`T${rowIndex}`).value = calc.averages.totalAverage;
+    sheet.getCell(`T${rowIndex}`).numFmt = "0.00";
+    sheet.getCell(`U${rowIndex}`).value = course.expectedValue;
+    sheet.getCell(`U${rowIndex}`).numFmt = "0.00";
   });
+
+  for (let rowIndex = 3 + calc.chartRows.length; rowIndex <= 180; rowIndex += 1) {
+    sheet.getRow(rowIndex).height = 15;
+    sheet.getCell(`A${rowIndex}`).value = rowIndex - 3;
+    for (const column of ["B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "M", "N", "O", "P", "Q", "R", "S", "T", "U"]) {
+      sheet.getCell(`${column}${rowIndex}`).value = null;
+    }
+  }
 
   const helperLabels = [
     ...Array.from(
-      { length: fixedTargetCount },
+      { length: 7 },
       (_, index) => course.targets[index]?.name ?? `课程目标${index + 1}`,
     ),
     "课程总目标",
   ];
   const helperValues = [
     ...Array.from(
-      { length: fixedTargetCount },
-      (_, index) => calc.targetSummaries[index]?.finalAttainment ?? 0,
+      { length: 7 },
+      (_, index) => report.targetSummaries[index]?.finalAttainment ?? 0,
     ),
-    calc.targetSummaries.reduce(
-      (sum, summary, index) =>
-        sum + summary.finalAttainment * (course.targets[index]?.overallWeight ?? 0),
-      0,
-    ),
+    report.courseFinalAttainment,
   ];
 
   helperLabels.forEach((label, index) => {
-    const rowIndex = helperStartRow + index;
-    sheet.getCell(rowIndex, helperLabelColumn).value = label;
-    sheet.getCell(rowIndex, helperValueColumn).value = helperValues[index];
-    sheet.getCell(rowIndex, helperValueColumn).numFmt = "0.00";
-    sheet.getCell(rowIndex, helperExpectedColumn).value = course.expectedValue;
-    sheet.getCell(rowIndex, helperExpectedColumn).numFmt = "0.00";
+    const rowIndex = 4 + index;
+    sheet.getCell(`X${rowIndex}`).value = label;
+    sheet.getCell(`Y${rowIndex}`).value = helperValues[index];
+    sheet.getCell(`Y${rowIndex}`).numFmt = "0.00";
+    sheet.getCell(`Z${rowIndex}`).value = course.expectedValue;
+    sheet.getCell(`Z${rowIndex}`).numFmt = "0.00";
   });
 
-  for (let rowIndex = 1; rowIndex <= 4; rowIndex += 1) {
-    for (let columnIndex = 1; columnIndex <= sheet.columnCount; columnIndex += 1) {
-      sheet.getRow(rowIndex).getCell(columnIndex).alignment = {
-        horizontal: "center",
-        vertical: "middle",
-        wrapText: true,
-      };
-    }
-  }
+  normalizeStandaloneChartHeader(sheet);
+}
 
-  normalizeChartHeader(sheet);
+async function buildStandaloneChartSheet(
+  workbook: ExcelJS.Workbook,
+  course: CourseInput,
+  calc: ReturnType<typeof calculateCourse>,
+  report: ReportExportData,
+) {
+  const templateSheet = await loadStandaloneChartTemplate();
+  const sheet = workbook.addWorksheet("5绘图数据");
+  cloneWorksheetStructure(templateSheet, sheet);
+  clearWorksheetValues(sheet);
+  fillStandaloneChartSheet(sheet, course, calc, report);
 }
 
 function applyDefaultSheetStyling(workbook: ExcelJS.Workbook) {
@@ -459,27 +586,236 @@ function applyDefaultSheetStyling(workbook: ExcelJS.Workbook) {
   });
 }
 
+async function loadReportTemplateZip() {
+  const templatePath = path.join(process.cwd(), "3课程达成度分析报告模板.xlsx");
+  const buffer = await fs.promises.readFile(templatePath);
+  return JSZip.loadAsync(buffer);
+}
+
+function buildTemplateChartSheetXml(
+  sheetXml: string,
+  course: CourseInput,
+  calc: ReturnType<typeof calculateCourse>,
+  report: ReportExportData,
+) {
+  const entries: Array<[string, string | number | null]> = [];
+  const averageValues = Array.from({ length: 7 }, (_, index) => calc.averages.targetAverages[index] ?? 0);
+
+  for (let index = 0; index < 7; index += 1) {
+    entries.push([`${String.fromCharCode(68 + index)}1`, `目标${index + 1}`]);
+    entries.push([`${String.fromCharCode(77 + index)}1`, `目标${index + 1}`]);
+    entries.push([`${String.fromCharCode(68 + index)}2`, averageValues[index]]);
+  }
+  entries.push(["K1", "总目标"], ["T1", "总目标"], ["M2", "平均达成度"], ["U1", "期望值"], ["K2", calc.averages.totalAverage]);
+
+  calc.chartRows.forEach((row, index) => {
+    const rowIndex = 3 + index;
+    entries.push([`A${rowIndex}`, index], [`B${rowIndex}`, row.studentNo], [`C${rowIndex}`, row.studentName]);
+    for (let targetIndex = 0; targetIndex < 7; targetIndex += 1) {
+      entries.push([`${String.fromCharCode(68 + targetIndex)}${rowIndex}`, row.targetAttainments[targetIndex] ?? 0]);
+      entries.push([`${String.fromCharCode(77 + targetIndex)}${rowIndex}`, averageValues[targetIndex]]);
+    }
+    entries.push([`K${rowIndex}`, row.totalAttainment], [`T${rowIndex}`, calc.averages.totalAverage], [`U${rowIndex}`, course.expectedValue]);
+  });
+
+  for (let rowIndex = 3 + calc.chartRows.length; rowIndex <= 180; rowIndex += 1) {
+    entries.push([`A${rowIndex}`, rowIndex - 3], [`B${rowIndex}`, null], [`C${rowIndex}`, null]);
+    for (const column of ["D", "E", "F", "G", "H", "I", "J", "K", "M", "N", "O", "P", "Q", "R", "S", "T", "U"]) {
+      entries.push([`${column}${rowIndex}`, null]);
+    }
+  }
+
+  const helperLabels = [
+    ...Array.from(
+      { length: 7 },
+      (_, index) => course.targets[index]?.name ?? `课程目标${index + 1}`,
+    ),
+    "课程总目标",
+  ];
+  const helperValues = [
+    ...Array.from(
+      { length: 7 },
+      (_, index) => report.targetSummaries[index]?.finalAttainment ?? 0,
+    ),
+    report.courseFinalAttainment,
+  ];
+
+  helperLabels.forEach((label, index) => {
+    const rowIndex = 4 + index;
+    entries.push([`X${rowIndex}`, label], [`Y${rowIndex}`, helperValues[index]], [`Z${rowIndex}`, course.expectedValue]);
+  });
+
+  return setXmlCells(sheetXml, entries);
+}
+
+function buildTemplateReportSheetXml(
+  sheetXml: string,
+  course: CourseInput,
+  report: ReportExportData,
+) {
+  const { processMethods } = getMethodSets(course);
+  const entries: Array<[string, string | number | null]> = [];
+
+  const audience = [course.department, course.major, course.className].filter(Boolean).join("");
+  const hoursCredit = [course.hours, course.credit].filter(Boolean).join("/");
+
+  entries.push(
+    ["A1", `《${course.courseName}》`],
+    ["D4", course.courseName],
+    ["P4", course.courseCode],
+    ["D5", course.courseType],
+    ["P5", hoursCredit],
+    ["D6", course.semester],
+    ["P6", audience || course.className],
+    ["D7", course.selectedCount],
+    ["P7", course.evaluatedCount],
+    ["D8", course.teacherNames],
+    ["P8", course.ownerTeacher],
+    ["D23", processMethods[0]?.name ?? null],
+    ["G23", processMethods[1]?.name ?? null],
+    ["J23", processMethods[2]?.name ?? null],
+    ["M23", processMethods[3]?.name ?? null],
+    ["O22", "结果性评价"],
+    ["R22", "学生调查问卷"],
+    ["T22", "其它"],
+    ["B47", round(course.examQuestions.reduce((sum, question) => sum + (question.score ?? 0), 0))],
+    ["B93", report.courseFinalAttainment],
+  );
+
+  Array.from({ length: 7 }, (_, targetIndex) => {
+    const target = course.targets[targetIndex];
+    const rowIndex = 12 + targetIndex;
+    entries.push([`A${rowIndex}`, target ? "课程总目标" : null]);
+    entries.push([`B${rowIndex}`, target?.name ?? null]);
+    entries.push([
+      `F${rowIndex}`,
+      target
+        ? [target.summary, target.graduationRequirement && `支撑指标点：${target.graduationRequirement}`]
+            .filter(Boolean)
+            .join("\n")
+        : null,
+    ]);
+    entries.push([`T${rowIndex}`, target?.supportStrength ?? null]);
+  });
+
+  Array.from({ length: 7 }, (_, targetIndex) => {
+    const target = course.targets[targetIndex];
+    const targetSummary = report.targetSummaries[targetIndex];
+    const rowIndex = 24 + targetIndex;
+    entries.push([`A${rowIndex}`, target?.name ?? null]);
+    entries.push([`C${rowIndex}`, targetSummary?.processItems[0]?.weight ?? 0]);
+    entries.push([`F${rowIndex}`, targetSummary?.processItems[1]?.weight ?? 0]);
+    entries.push([`I${rowIndex}`, targetSummary?.processItems[2]?.weight ?? 0]);
+    entries.push([`L${rowIndex}`, targetSummary?.processItems[3]?.weight ?? 0]);
+    entries.push([`O${rowIndex}`, target?.resultEvaluationRatio ?? 0]);
+    entries.push([`R${rowIndex}`, target?.surveyEvaluationRatio ?? 0]);
+    entries.push([`T${rowIndex}`, target?.otherEvaluationRatio ?? 0]);
+  });
+
+  Array.from({ length: 7 }, (_, targetIndex) => {
+    const target = course.targets[targetIndex];
+    const oddRow = 33 + targetIndex * 2;
+    const evenRow = oddRow + 1;
+    const labels = course.examQuestions.map((question) => question.targetLabels[targetIndex] ?? "").slice(0, 15);
+    const scores = course.examQuestions.map((question) => question.targetScores[targetIndex] ?? 0).slice(0, 15);
+
+    entries.push([`A${oddRow}`, target?.name ?? null], [`B${oddRow}`, target?.name ?? null], [`C${oddRow}`, target ? "小题号" : null]);
+    entries.push([`A${evenRow}`, target?.name ?? null], [`B${evenRow}`, target?.name ?? null], [`C${evenRow}`, target ? "分值" : null]);
+
+    for (let index = 0; index < 15; index += 1) {
+      const column = String.fromCharCode(68 + index);
+      entries.push([`${column}${oddRow}`, labels[index] || null]);
+      entries.push([`${column}${evenRow}`, scores[index] ?? 0]);
+    }
+    entries.push([`S${oddRow}`, "合计"], [`S${evenRow}`, round(scores.reduce((sum, value) => sum + (value ?? 0), 0))]);
+  });
+
+  Array.from({ length: 7 }, (_, targetIndex) => {
+    const target = course.targets[targetIndex];
+    const summary = report.targetSummaries[targetIndex];
+    const baseRow = 51 + targetIndex * 6;
+    entries.push([`A${baseRow}`, target?.name ?? null], [`B${baseRow}`, "直接评价"], [`C${baseRow}`, "过程性评价"], [`R${baseRow}`, summary?.overallWeight ?? 0], [`T${baseRow}`, summary?.finalAttainment ?? 0]);
+
+    (summary?.processItems ?? []).forEach((item, processIndex) => {
+      const rowIndex = baseRow + processIndex;
+      entries.push([`A${rowIndex}`, target?.name ?? null]);
+      entries.push([`D${rowIndex}`, item.name || "0"]);
+      entries.push([`I${rowIndex}`, item.weight]);
+      entries.push([`K${rowIndex}`, item.targetScore]);
+      entries.push([`N${rowIndex}`, item.averageScore]);
+      entries.push([`P${rowIndex}`, item.attainment]);
+    });
+
+    const resultRow = baseRow + 4;
+    entries.push([`A${resultRow}`, target?.name ?? null], [`C${resultRow}`, "结果性评价"], [`I${resultRow}`, summary?.resultWeight ?? 0], [`K${resultRow}`, summary?.resultTargetScore ?? 0], [`N${resultRow}`, summary?.resultAverageScore ?? 0], [`P${resultRow}`, summary?.resultAttainment ?? 0]);
+
+    const indirectRow = baseRow + 5;
+    entries.push([`A${indirectRow}`, target?.name ?? null], [`B${indirectRow}`, "间接评价"], [`I${indirectRow}`, summary?.indirectWeight ?? 0], [`K${indirectRow}`, 1], [`N${indirectRow}`, summary?.indirectAverageScore ?? 0], [`P${indirectRow}`, summary?.indirectAttainment ?? 0]);
+  });
+
+  const textBlock = [
+    "（一）课程分析",
+    course.reportTexts.analysisText || "",
+    "",
+    "（二）存在问题",
+    course.reportTexts.problemText || "",
+    "",
+    "（三）改进措施",
+    course.reportTexts.improvementText || "",
+    "",
+    "（四）教师评价",
+    course.reportTexts.teacherComment || "",
+  ].join("\n");
+  entries.push(["A96", textBlock]);
+
+  return setXmlCells(sheetXml, entries);
+}
+
+async function exportCourseAnalysisTemplate(course: CourseInput) {
+  const zip = await loadReportTemplateZip();
+  const calc = calculateCourse(course);
+  const report = buildReportExportData(course);
+
+  const sheet4Path = "xl\\worksheets\\sheet4.xml";
+  const sheet6Path = "xl\\worksheets\\sheet6.xml";
+  const sheet4File = zip.file(sheet4Path);
+  const sheet6File = zip.file(sheet6Path);
+  if (!sheet4File || !sheet6File) {
+    throw new Error("模板文件缺少表3或表5工作表");
+  }
+
+  const updatedSheet6 = buildTemplateChartSheetXml(await sheet6File.async("string"), course, calc, report);
+  const updatedSheet4 = buildTemplateReportSheetXml(await sheet4File.async("string"), course, report);
+
+  zip.file(sheet6Path, updatedSheet6);
+  zip.file(sheet4Path, updatedSheet4);
+
+  const buffer = await zip.generateAsync({ type: "nodebuffer" });
+  return Buffer.from(buffer);
+}
+
 export async function exportWorkbook(
   course: CourseInput,
   kind: "3" | "4" | "5",
 ): Promise<Buffer> {
+  if (kind === "3") {
+    return exportCourseAnalysisTemplate(course);
+  }
+
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Codex";
   workbook.created = new Date();
   workbook.modified = new Date();
 
   const calc = calculateCourse(course);
-
-  if (kind === "3") {
-    buildCourseAnalysisSheet(workbook, course, calc);
-  }
+  const report = buildReportExportData(course);
 
   if (kind === "4") {
     buildStudentTargetAttainmentSheet(workbook, course, calc);
   }
 
   if (kind === "5") {
-    await buildChartSheet(workbook, course, calc);
+    await buildStandaloneChartSheet(workbook, course, calc, report);
   }
 
   applyDefaultSheetStyling(workbook);

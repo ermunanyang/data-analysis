@@ -21,14 +21,13 @@ export async function GET(_request: Request, { params }: RouteProps) {
 
   const buffer = await exportWorkbook(course, kind as "3" | "4" | "5");
   const fileName =
-    kind === "4"
-      ? `${course.courseName || "课程"}课程目标达成度.xlsx`
-      : kind === "5"
-        ? `${course.courseName || "课程"}绘图数据.xlsx`
-      : `${course.courseName || "课程"}-${kind}.xlsx`;
-  const body = new Uint8Array(buffer);
+    kind === "3"
+      ? `${course.courseName || "课程"}课程达成度分析报告.xlsx`
+      : kind === "4"
+        ? `${course.courseName || "课程"}课程目标达成度.xlsx`
+        : `${course.courseName || "课程"}绘图数据.xlsx`;
 
-  return new NextResponse(body, {
+  return new NextResponse(new Uint8Array(buffer), {
     headers: {
       "Content-Type":
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
