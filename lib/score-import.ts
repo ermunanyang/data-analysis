@@ -1,6 +1,6 @@
 import { Buffer } from "node:buffer";
 
-import JSZip from "../node_modules/.pnpm/exceljs@4.4.0/node_modules/jszip/lib/index.js";
+import JSZip from "jszip";
 
 import { createEmptyStudent } from "@/lib/course-defaults";
 import type { CourseInput } from "@/lib/course-schema";
