@@ -50,6 +50,27 @@ function createDefaultMethods(): CourseInput["methods"] {
   ];
 }
 
+function syncDerivedTargetScores(input: CourseInput): CourseInput["targetMethodConfigs"] {
+  return input.targetMethodConfigs.map((config) => {
+    const method = input.methods[config.methodIndex];
+    if (!method) {
+      return config;
+    }
+
+    if (method.category === "RESULT") {
+      return {
+        ...config,
+        targetScore: input.examQuestions.reduce(
+          (sum, question) => sum + (question.targetScores[config.targetIndex] ?? 0),
+          0,
+        ),
+      };
+    }
+
+    return config;
+  });
+}
+
 export function createDefaultCourseInput(): CourseInput {
   const targets = createDefaultTargets();
   const methods = createDefaultMethods();
@@ -73,14 +94,11 @@ export function createDefaultCourseInput(): CourseInput {
             ? 60
             : method.category === "PROCESS" && targetIndex === 3 && methodIndex === 1
               ? 100
-              : method.category === "RESULT" &&
-                  target.processEvaluationRatio + target.resultEvaluationRatio > 0
-                ? 100 * target.resultEvaluationRatio
-                : 0,
+              : 0,
     })),
   );
 
-  return {
+  const courseInput: CourseInput = {
     courseName: "",
     courseCode: "",
     courseType: "",
@@ -105,6 +123,7 @@ export function createDefaultCourseInput(): CourseInput {
       label: `${index + 1}`,
       title: "",
       score: 0,
+      targetLabels: targets.map(() => `${index + 1}`),
       targetScores: targets.map(() => 0),
     })),
     students: Array.from({ length: DEFAULT_STUDENT_ROWS }, () =>
@@ -124,6 +143,11 @@ export function createDefaultCourseInput(): CourseInput {
       improvementText: "",
       teacherComment: "",
     },
+  };
+
+  return {
+    ...courseInput,
+    targetMethodConfigs: syncDerivedTargetScores(courseInput),
   };
 }
 
@@ -228,7 +252,10 @@ export function normalizeStudentRows(input: CourseInput): CourseInput {
     sanitizedInput.examQuestions.length > 0
       ? sanitizedInput.examQuestions.map((question, index) => ({
           ...question,
-          label: question.label || `${index + 1}`,
+          label: (question.targetLabels?.[0] ?? question.label) || `${index + 1}`,
+          targetLabels: Array.from({ length: targetCount }, (_, targetIndex) =>
+            question.targetLabels?.[targetIndex] ?? question.label ?? `${index + 1}`,
+          ),
           targetScores: Array.from({ length: targetCount }, (_, targetIndex) =>
             question.targetScores[targetIndex] ?? 0,
           ),
@@ -237,6 +264,7 @@ export function normalizeStudentRows(input: CourseInput): CourseInput {
           label: `${index + 1}`,
           title: "",
           score: 0,
+          targetLabels: Array.from({ length: targetCount }, () => `${index + 1}`),
           targetScores: Array.from({ length: targetCount }, () => 0),
         }));
 
@@ -247,10 +275,15 @@ export function normalizeStudentRows(input: CourseInput): CourseInput {
     indirectWeight: target.indirectWeight ?? input.indirectWeight ?? 0.2,
   }));
 
-  return {
+  const normalizedInput: CourseInput = {
     ...sanitizedInput,
     targets,
     examQuestions,
     students,
+  };
+
+  return {
+    ...normalizedInput,
+    targetMethodConfigs: syncDerivedTargetScores(normalizedInput),
   };
 }

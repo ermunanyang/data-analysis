@@ -34,6 +34,7 @@ export const examQuestionInputSchema = z.object({
   label: z.string().default(""),
   title: z.string().default(""),
   score: z.coerce.number().min(0),
+  targetLabels: z.array(z.string().default("")).default([]),
   targetScores: z.array(z.coerce.number().min(0)),
 });
 

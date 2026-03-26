@@ -44,6 +44,8 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
   const [currentStep, setCurrentStep] = useState(0);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [examQuestionLabelDrafts, setExamQuestionLabelDrafts] = useState<Record<string, string>>({});
+  const [examTargetScoreDrafts, setExamTargetScoreDrafts] = useState<Record<string, string>>({});
   const [pending, startTransition] = useTransition();
   const preview = calculateCourse(useDeferredValue(course));
   const isEdit = Boolean(courseId);
@@ -229,10 +231,51 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
     patch({ targets });
   }
 
-  function updateExamQuestion(index: number, key: "label" | "title" | "score", value: string | number) {
+  function updateExamQuestionTargetLabel(questionIndex: number, targetIndex: number, value: string) {
     const examQuestions = [...course.examQuestions];
-    examQuestions[index] = { ...examQuestions[index], [key]: value };
-    patch({ examQuestions });
+    const targetLabels = [...(examQuestions[questionIndex]?.targetLabels ?? [])];
+    targetLabels[targetIndex] = value;
+    examQuestions[questionIndex] = {
+      ...examQuestions[questionIndex],
+      label: targetLabels[0] ?? examQuestions[questionIndex]?.label ?? "",
+      targetLabels,
+    };
+    patch({
+      examQuestions,
+      targetMethodConfigs: syncResultTargetScores(course.targetMethodConfigs, examQuestions, course.methods),
+    });
+  }
+
+  function getExamQuestionLabelDraft(questionIndex: number, targetIndex: number) {
+    const key = `${questionIndex}-${targetIndex}`;
+    return (
+      examQuestionLabelDrafts[key] ??
+      course.examQuestions[questionIndex]?.targetLabels?.[targetIndex] ??
+      ""
+    );
+  }
+
+  function updateExamQuestionLabelDraft(questionIndex: number, targetIndex: number, value: string) {
+    const key = `${questionIndex}-${targetIndex}`;
+    setExamQuestionLabelDrafts((current) => ({
+      ...current,
+      [key]: value,
+    }));
+  }
+
+  function commitExamQuestionLabelDraft(questionIndex: number, targetIndex: number) {
+    const key = `${questionIndex}-${targetIndex}`;
+    const draft = examQuestionLabelDrafts[key];
+    if (draft === undefined) {
+      return;
+    }
+
+    updateExamQuestionTargetLabel(questionIndex, targetIndex, draft);
+    setExamQuestionLabelDrafts((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
   }
 
   function updateExamTargetScore(questionIndex: number, targetIndex: number, value: number) {
@@ -240,7 +283,39 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
     const targetScores = [...examQuestions[questionIndex].targetScores];
     targetScores[targetIndex] = value;
     examQuestions[questionIndex] = { ...examQuestions[questionIndex], targetScores };
-    patch({ examQuestions });
+    patch({
+      examQuestions,
+      targetMethodConfigs: syncResultTargetScores(course.targetMethodConfigs, examQuestions, course.methods),
+    });
+  }
+
+  function getExamTargetScoreDraft(questionIndex: number, targetIndex: number) {
+    const key = `${questionIndex}-${targetIndex}`;
+    return examTargetScoreDrafts[key] ?? String(course.examQuestions[questionIndex]?.targetScores[targetIndex] ?? 0);
+  }
+
+  function updateExamTargetScoreDraft(questionIndex: number, targetIndex: number, value: string) {
+    const key = `${questionIndex}-${targetIndex}`;
+    setExamTargetScoreDrafts((current) => ({
+      ...current,
+      [key]: value,
+    }));
+  }
+
+  function commitExamTargetScoreDraft(questionIndex: number, targetIndex: number) {
+    const key = `${questionIndex}-${targetIndex}`;
+    const draft = examTargetScoreDrafts[key];
+    if (draft === undefined) {
+      return;
+    }
+
+    const nextValue = draft.trim() === "" ? 0 : Number(draft);
+    updateExamTargetScore(questionIndex, targetIndex, Number.isFinite(nextValue) ? nextValue : 0);
+    setExamTargetScoreDrafts((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
   }
 
   function addTarget() {
@@ -264,17 +339,22 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
 
     patch({
       targets: nextTargets,
-      targetMethodConfigs: [
-        ...course.targetMethodConfigs,
-        ...course.methods.map((_, methodIndex) => ({
-          targetIndex,
-          methodIndex,
-          weight: 0,
-          targetScore: 0,
-        })),
-      ],
+      targetMethodConfigs: syncResultTargetScores(
+        [
+          ...course.targetMethodConfigs,
+          ...course.methods.map((_, methodIndex) => ({
+            targetIndex,
+            methodIndex,
+            weight: 0,
+            targetScore: 0,
+          })),
+        ],
+        course.examQuestions,
+        course.methods,
+      ),
       examQuestions: course.examQuestions.map((question) => ({
         ...question,
+        targetLabels: [...question.targetLabels, ""],
         targetScores: [...question.targetScores, 0],
       })),
       indirectEvaluations: [
@@ -298,14 +378,23 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
 
     patch({
       targets: nextTargets,
-      targetMethodConfigs: course.targetMethodConfigs
-        .filter((item) => item.targetIndex !== index)
-        .map((item) => ({
-          ...item,
-          targetIndex: item.targetIndex > index ? item.targetIndex - 1 : item.targetIndex,
+      targetMethodConfigs: syncResultTargetScores(
+        course.targetMethodConfigs
+          .filter((item) => item.targetIndex !== index)
+          .map((item) => ({
+            ...item,
+            targetIndex: item.targetIndex > index ? item.targetIndex - 1 : item.targetIndex,
+          })),
+        course.examQuestions.map((question) => ({
+          ...question,
+          targetLabels: question.targetLabels.filter((_, targetIndex) => targetIndex !== index),
+          targetScores: question.targetScores.filter((_, targetIndex) => targetIndex !== index),
         })),
+        course.methods,
+      ),
       examQuestions: course.examQuestions.map((question) => ({
         ...question,
+        targetLabels: question.targetLabels.filter((_, targetIndex) => targetIndex !== index),
         targetScores: question.targetScores.filter((_, targetIndex) => targetIndex !== index),
       })),
       indirectEvaluations: course.indirectEvaluations
@@ -363,7 +452,7 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
 
     patch({
       methods: nextMethods,
-      targetMethodConfigs: nextConfigs,
+      targetMethodConfigs: syncResultTargetScores(nextConfigs, course.examQuestions, nextMethods),
       students: nextStudents,
     });
   }
@@ -398,22 +487,26 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
 
     patch({
       methods: nextMethods,
-      targetMethodConfigs: nextConfigs,
+      targetMethodConfigs: syncResultTargetScores(nextConfigs, course.examQuestions, nextMethods),
       students: remapStudents(nextMethods, course.targets, course.students, methodIndexMap),
     });
   }
 
   function addExamQuestion() {
+    const examQuestions = [
+      ...course.examQuestions,
+      {
+        label: `${course.examQuestions.length + 1}`,
+        title: "",
+        score: 0,
+        targetLabels: course.targets.map(() => ""),
+        targetScores: course.targets.map(() => 0),
+      },
+    ];
+
     patch({
-      examQuestions: [
-        ...course.examQuestions,
-        {
-          label: `${course.examQuestions.length + 1}`,
-          title: "",
-          score: 0,
-          targetScores: course.targets.map(() => 0),
-        },
-      ],
+      examQuestions,
+      targetMethodConfigs: syncResultTargetScores(course.targetMethodConfigs, examQuestions, course.methods),
     });
   }
 
@@ -423,8 +516,11 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
       return;
     }
 
+    const examQuestions = course.examQuestions.filter((_, questionIndex) => questionIndex !== index);
+
     patch({
-      examQuestions: course.examQuestions.filter((_, questionIndex) => questionIndex !== index),
+      examQuestions,
+      targetMethodConfigs: syncResultTargetScores(course.targetMethodConfigs, examQuestions, course.methods),
     });
   }
 
@@ -443,6 +539,29 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
       }),
     });
     setMessage("过程性评价目标分值已按评价方式比例自动生成，可继续调整。");
+  }
+
+  function syncResultTargetScores(
+    configs: CourseInput["targetMethodConfigs"],
+    examQuestions: CourseInput["examQuestions"],
+    methods: CourseInput["methods"],
+  ) {
+    return configs.map((config) => {
+      const method = methods[config.methodIndex];
+      if (!method || method.category !== "RESULT") {
+        return config;
+      }
+
+      return {
+        ...config,
+        targetScore: round(
+          examQuestions.reduce(
+            (sum, question) => sum + (question.targetScores[config.targetIndex] ?? 0),
+            0,
+          ),
+        ),
+      };
+    });
   }
 
   async function save() {
@@ -964,8 +1083,12 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
                         <TD key={questionIndex}>
                           <input
                             className={inputClass}
-                            value={question.label}
-                            onChange={(e) => updateExamQuestion(questionIndex, "label", e.target.value)}
+                            inputMode="numeric"
+                            value={getExamQuestionLabelDraft(questionIndex, targetIndex)}
+                            onChange={(e) =>
+                              updateExamQuestionLabelDraft(questionIndex, targetIndex, e.target.value)
+                            }
+                            onBlur={() => commitExamQuestionLabelDraft(questionIndex, targetIndex)}
                           />
                         </TD>
                       ))}
@@ -979,10 +1102,9 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
                             className={inputClass}
                             type="number"
                             step="1"
-                            value={question.targetScores[targetIndex] ?? 0}
-                            onChange={(e) =>
-                              updateExamTargetScore(questionIndex, targetIndex, Number(e.target.value))
-                            }
+                            value={getExamTargetScoreDraft(questionIndex, targetIndex)}
+                            onChange={(e) => updateExamTargetScoreDraft(questionIndex, targetIndex, e.target.value)}
+                            onBlur={() => commitExamTargetScoreDraft(questionIndex, targetIndex)}
                           />
                         </TD>
                       ))}
@@ -1100,15 +1222,12 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
                           结果性评价
                         </TD>
                         <TD className="text-center align-middle">
-                          <input
-                            className={`${inputClass} text-center align-middle`}
-                            type="number"
-                            step="0.01"
-                            value={getConfig(course, targetIndex, resultMethodIndex).targetScore}
-                            onChange={(e) =>
-                              updateConfig(targetIndex, resultMethodIndex, "targetScore", Number(e.target.value))
-                            }
-                          />
+                          {round(
+                            course.examQuestions.reduce(
+                              (sum, question) => sum + (question.targetScores[targetIndex] ?? 0),
+                              0,
+                            ),
+                          )}
                         </TD>
                       </tr>
                     ) : null}
@@ -1116,7 +1235,7 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
                       <TD colSpan={3} className="text-center align-middle font-semibold">
                         间接评价
                       </TD>
-                      <TD className="text-center align-middle">{round(target.surveyEvaluationRatio)}</TD>
+                      <TD className="text-center align-middle">1</TD>
                     </tr>
                   </Fragment>
                 ))}

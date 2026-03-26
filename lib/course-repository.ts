@@ -111,9 +111,14 @@ export async function getCourseInputById(id: string): Promise<CourseInput | null
       }),
     ),
     examQuestions: course.examQuestions.map((question) => ({
-      label: question.label,
+      label:
+        (Array.isArray(question.targetLabels) ? String(question.targetLabels[0] ?? "") : "") ||
+        question.label,
       title: question.title,
       score: toNumber(question.score),
+      targetLabels: Array.isArray(question.targetLabels)
+        ? question.targetLabels.map((value) => String(value ?? ""))
+        : targets.map(() => question.label ?? ""),
       targetScores: Array.isArray(question.targetScores)
         ? question.targetScores.map((value) => Number(value ?? 0))
         : [],
@@ -279,6 +284,7 @@ export async function saveCourse(input: CourseInput, id?: string) {
         label: question.label || `${index + 1}`,
         title: question.title,
         score: decimal(question.score),
+        targetLabels: question.targetLabels,
         targetScores: question.targetScores,
       })),
     });

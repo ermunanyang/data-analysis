@@ -116,6 +116,7 @@ model ExamQuestion {
   label      String
   title      String   @db.Text
   score      Decimal  @default(0) @db.Decimal(8, 2)
+  targetLabels Json?
   targetScores Json
   course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
