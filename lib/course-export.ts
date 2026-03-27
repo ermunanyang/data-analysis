@@ -415,10 +415,25 @@ function buildStudentTargetAttainmentSheet(
 
 async function loadStandaloneChartTemplate() {
   const desktopPath = path.join(process.env.USERPROFILE ?? "C:/Users/admin", "Desktop");
-  const entries = await fs.promises.readdir(desktopPath, { withFileTypes: true });
-  const candidateFiles = entries
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".xlsx") && !entry.name.startsWith("~$"))
-    .map((entry) => path.join(desktopPath, entry.name));
+  const candidateFiles = [path.join(process.cwd(), "3课程达成度分析报告模板.xlsx")];
+
+  for (const searchDir of [process.cwd(), desktopPath]) {
+    try {
+      const entries = await fs.promises.readdir(searchDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isFile() || !entry.name.endsWith(".xlsx") || entry.name.startsWith("~$")) {
+          continue;
+        }
+
+        const filePath = path.join(searchDir, entry.name);
+        if (!candidateFiles.includes(filePath)) {
+          candidateFiles.push(filePath);
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
 
   for (const filePath of candidateFiles) {
     const workbook = new ExcelJS.Workbook();
