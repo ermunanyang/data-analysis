@@ -1,14 +1,10 @@
 import { randomUUID } from "node:crypto";
 
-import { AssessmentCategory, Prisma } from "@prisma/client";
-
 import { createDefaultCourseInput, normalizeStudentRows } from "@/lib/course-defaults";
 import { courseInputSchema, type CourseInput } from "@/lib/course-schema";
 import { prisma } from "@/lib/prisma";
 
-const decimal = (value: number) => new Prisma.Decimal(value);
-
-const toNumber = (value: Prisma.Decimal | number | null | undefined) =>
+const toNumber = (value: { toString(): string } | number | null | undefined) =>
   value === null || value === undefined ? 0 : Number(value);
 
 function sortBy<T extends { sortOrder: number }>(rows: T[]) {
@@ -204,10 +200,10 @@ export async function saveCourse(input: CourseInput, id?: string) {
       selectedCount: parsed.selectedCount,
       evaluatedCount: parsed.evaluatedCount,
       targetCount: parsed.targets.length,
-      expectedValue: decimal(parsed.expectedValue),
-      directWeight: decimal(parsed.directWeight),
-      indirectWeight: decimal(parsed.indirectWeight),
-      surveyWeight: decimal(parsed.surveyWeight),
+      expectedValue: parsed.expectedValue,
+      directWeight: parsed.directWeight,
+      indirectWeight: parsed.indirectWeight,
+      surveyWeight: parsed.surveyWeight,
       analysisText: parsed.reportTexts.analysisText,
       problemText: parsed.reportTexts.problemText,
       improvementText: parsed.reportTexts.improvementText,
@@ -243,13 +239,13 @@ export async function saveCourse(input: CourseInput, id?: string) {
         summary: target.summary,
         graduationRequirement: target.graduationRequirement,
         supportStrength: target.supportStrength,
-        overallWeight: decimal(target.overallWeight),
-        processEvaluationRatio: decimal(target.processEvaluationRatio),
-        resultEvaluationRatio: decimal(target.resultEvaluationRatio),
-        surveyEvaluationRatio: decimal(target.surveyEvaluationRatio),
-        otherEvaluationRatio: decimal(target.otherEvaluationRatio),
-        directWeight: decimal(target.directWeight),
-        indirectWeight: decimal(target.indirectWeight),
+        overallWeight: target.overallWeight,
+        processEvaluationRatio: target.processEvaluationRatio,
+        resultEvaluationRatio: target.resultEvaluationRatio,
+        surveyEvaluationRatio: target.surveyEvaluationRatio,
+        otherEvaluationRatio: target.otherEvaluationRatio,
+        directWeight: target.directWeight,
+        indirectWeight: target.indirectWeight,
       })),
     });
 
@@ -259,8 +255,8 @@ export async function saveCourse(input: CourseInput, id?: string) {
         courseId: courseRecord.id,
         sortOrder: index,
         name: method.name,
-        category: method.category as AssessmentCategory,
-        fullScore: decimal(method.fullScore),
+        category: method.category,
+        fullScore: method.fullScore,
         enabled: method.enabled,
       })),
     });
@@ -271,8 +267,8 @@ export async function saveCourse(input: CourseInput, id?: string) {
         courseId: courseRecord.id,
         targetId: targetIds[config.targetIndex],
         methodId: methodIds[config.methodIndex],
-        weight: decimal(config.weight),
-        targetScore: decimal(config.targetScore),
+        weight: config.weight,
+        targetScore: config.targetScore,
       })),
     });
 
@@ -283,7 +279,7 @@ export async function saveCourse(input: CourseInput, id?: string) {
         sortOrder: index,
         label: question.label || `${index + 1}`,
         title: question.title,
-        score: decimal(question.score),
+        score: question.score,
         targetLabels: question.targetLabels,
         targetScores: question.targetScores,
       })),
@@ -331,7 +327,7 @@ export async function saveCourse(input: CourseInput, id?: string) {
               studentId: studentIds[studentIndex],
               methodId: methodIds[methodIndex],
               targetId: targetIds[targetIndex],
-              score: decimal(value),
+              score: value,
             };
           }),
         ),
