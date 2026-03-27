@@ -42,6 +42,8 @@ type ReportExportData = {
   courseFinalAttainment: number;
 };
 
+const TEMPLATE_TARGET_COUNT = 7;
+
 function setColumns(sheet: ExcelJS.Worksheet, widths: number[]) {
   sheet.columns = widths.map((width) => ({ width }));
 }
@@ -122,6 +124,36 @@ function setXmlCellValue(xml: string, cellRef: string, value: string | number | 
 
 function setXmlCells(xml: string, entries: Array<[string, string | number | null]>) {
   return entries.reduce((current, [cellRef, value]) => setXmlCellValue(current, cellRef, value), xml);
+}
+
+function setWorkbookVisibleSheetOnly(xml: string, visibleSheetName: string) {
+  let nextXml = xml.replace(/<sheet\b([^>]*?)\bname="([^"]+)"([^>]*)\/>/g, (_match, before, name, after) => {
+    const attrs = `${before}name="${name}"${after}`.replace(/\s+state="[^"]*"/g, "");
+    const state = name === visibleSheetName ? "" : ' state="hidden"';
+    return `<sheet${attrs}${state}/>`;
+  });
+
+  nextXml = nextXml.replace(
+    /<workbookView\b([^>]*)\bfirstSheet="[^"]*"([^>]*)\bactiveTab="[^"]*"([^>]*)\/>/,
+    '<workbookView$1firstSheet="3"$2activeTab="3"$3/>',
+  );
+
+  nextXml = nextXml.replace(
+    /<calcPr\b([^>]*)\/>/,
+    '<calcPr$1 calcMode="auto" fullCalcOnLoad="1" forceFullCalc="1"/>',
+  );
+
+  return nextXml;
+}
+
+function hideXmlRows(xml: string, rowNumbers: number[]) {
+  return rowNumbers.reduce((currentXml, rowNumber) => {
+    const rowPattern = new RegExp(`<row([^>]*\\br="${rowNumber}"[^>]*)>`);
+    return currentXml.replace(rowPattern, (_match, attrs) => {
+      const nextAttrs = attrs.replace(/\s+hidden="1"/g, "");
+      return `<row${nextAttrs} hidden="1">`;
+    });
+  }, xml);
 }
 
 function isStudentFilled(student: CourseInput["students"][number]) {
@@ -469,7 +501,7 @@ function fillStandaloneChartSheet(
   calc: ReturnType<typeof calculateCourse>,
   report: ReportExportData,
 ) {
-  const targetAverageCount = 7;
+  const targetAverageCount = TEMPLATE_TARGET_COUNT;
   const averageValues = Array.from({ length: targetAverageCount }, (_, index) =>
     calc.averages.targetAverages[index] ?? 0,
   );
@@ -730,10 +762,17 @@ function buildTemplateReportSheetXml(
     entries.push([`S${oddRow}`, "合计"], [`S${evenRow}`, round(scores.reduce((sum, value) => sum + (value ?? 0), 0))]);
   });
 
+  const hiddenRows: number[] = [];
+
   Array.from({ length: 7 }, (_, targetIndex) => {
     const target = course.targets[targetIndex];
     const summary = report.targetSummaries[targetIndex];
     const baseRow = 51 + targetIndex * 6;
+
+    if (!target || !summary) {
+      hiddenRows.push(baseRow, baseRow + 1, baseRow + 2, baseRow + 3, baseRow + 4, baseRow + 5);
+      return;
+    }
     entries.push([`A${baseRow}`, target?.name ?? null], [`B${baseRow}`, "直接评价"], [`C${baseRow}`, "过程性评价"], [`R${baseRow}`, summary?.overallWeight ?? 0], [`T${baseRow}`, summary?.finalAttainment ?? 0]);
 
     (summary?.processItems ?? []).forEach((item, processIndex) => {
@@ -768,6 +807,46 @@ function buildTemplateReportSheetXml(
   ].join("\n");
   entries.push(["A96", textBlock]);
 
+  return hideXmlRows(setXmlCells(sheetXml, entries), hiddenRows);
+}
+
+function buildTemplateInfoSheetXml(sheetXml: string, course: CourseInput) {
+  const { processMethods } = getMethodSets(course);
+  const audience = [course.department, course.major, course.className].filter(Boolean).join("");
+  const hoursCredit = [course.hours, course.credit].filter(Boolean).join("/");
+  const entries: Array<[string, string | number | null]> = [
+    ["D3", course.courseName],
+    ["M3", course.courseCode],
+    ["D4", course.courseType],
+    ["M4", hoursCredit],
+    ["D5", course.semester],
+    ["M5", audience || course.className],
+    ["D6", course.selectedCount],
+    ["M6", course.evaluatedCount],
+    ["D7", course.teacherNames],
+    ["M7", course.ownerTeacher],
+    ["E24", processMethods[0]?.name ?? null],
+    ["I24", processMethods[1]?.name ?? null],
+    ["L24", processMethods[2]?.name ?? null],
+    ["O24", processMethods[3]?.name ?? null],
+  ];
+
+  Array.from({ length: 7 }, (_, targetIndex) => {
+    const target = course.targets[targetIndex];
+    const rowIndex = 12 + targetIndex;
+    entries.push([`A${rowIndex}`, target ? "课程总目标" : null]);
+    entries.push([`B${rowIndex}`, target?.name ?? null]);
+    entries.push([
+      `E${rowIndex}`,
+      target
+        ? [target.summary, target.graduationRequirement && `支撑指标点：${target.graduationRequirement}`]
+            .filter(Boolean)
+            .join("\n")
+        : null,
+    ]);
+    entries.push([`P${rowIndex}`, target?.supportStrength ?? null]);
+  });
+
   return setXmlCells(sheetXml, entries);
 }
 
@@ -776,17 +855,31 @@ async function exportCourseAnalysisTemplate(course: CourseInput) {
   const calc = calculateCourse(course);
   const report = buildReportExportData(course);
 
+  const workbookPath = "xl\\workbook.xml";
+  const sheet1Path = "xl\\worksheets\\sheet1.xml";
   const sheet4Path = "xl\\worksheets\\sheet4.xml";
   const sheet6Path = "xl\\worksheets\\sheet6.xml";
+  const workbookFile = zip.file(workbookPath);
+  const sheet1File = zip.file(sheet1Path);
   const sheet4File = zip.file(sheet4Path);
   const sheet6File = zip.file(sheet6Path);
+  if (!workbookFile || !sheet1File) {
+    throw new Error("模板文件缺少必要的工作表");
+  }
   if (!sheet4File || !sheet6File) {
     throw new Error("模板文件缺少表3或表5工作表");
   }
 
+  const updatedWorkbook = setWorkbookVisibleSheetOnly(
+    await workbookFile.async("string"),
+    "3课程达成度分析报告",
+  );
+  const updatedSheet1 = buildTemplateInfoSheetXml(await sheet1File.async("string"), course);
   const updatedSheet6 = buildTemplateChartSheetXml(await sheet6File.async("string"), course, calc, report);
   const updatedSheet4 = buildTemplateReportSheetXml(await sheet4File.async("string"), course, report);
 
+  zip.file(workbookPath, updatedWorkbook);
+  zip.file(sheet1Path, updatedSheet1);
   zip.file(sheet6Path, updatedSheet6);
   zip.file(sheet4Path, updatedSheet4);
 
