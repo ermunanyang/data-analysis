@@ -580,23 +580,6 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
     });
   }
 
-  function autoGenerateProcessTargetScores() {
-    patch({
-      targetMethodConfigs: course.targetMethodConfigs.map((config) => {
-        const method = course.methods[config.methodIndex];
-        if (!method || method.category !== "PROCESS") {
-          return config;
-        }
-
-        return {
-          ...config,
-          targetScore: round(method.fullScore * config.weight),
-        };
-      }),
-    });
-    setMessage("过程性评价目标分值已按评价方式比例自动生成，可继续调整。");
-  }
-
   function syncResultTargetScores(
     configs: CourseInput["targetMethodConfigs"],
     examQuestions: CourseInput["examQuestions"],
@@ -1311,12 +1294,7 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
 
       {currentStep === 5 ? (
         <section className={`${sectionClass} space-y-4`}>
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-xl font-semibold">{steps[5].title}</h2>
-            <button type="button" onClick={autoGenerateProcessTargetScores} className="rounded-full border border-slate-300 px-4 py-2 text-sm">
-              自动生成过程性目标分值
-            </button>
-          </div>
+          <h2 className="text-xl font-semibold">{steps[5].title}</h2>
           <div className="overflow-x-auto">
             <table className="min-w-full border-separate border-spacing-0 text-center align-middle text-sm">
               <thead>

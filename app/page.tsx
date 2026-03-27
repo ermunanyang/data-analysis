@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { DeleteCourseButton } from "@/components/delete-course-button";
 import { getCourseSummaries } from "@/lib/course-repository";
 
 export default async function HomePage() {
@@ -18,8 +19,8 @@ export default async function HomePage() {
                 在线填写、回显、计算并导出 Excel 报告
               </h1>
               <p className="max-w-3xl text-base leading-7 text-slate-600">
-                围绕 Excel 需求构建的多课程工作台，支持课程新增、再次编辑更新、实时计算预览，
-                以及按单课程导出 3/4/5 报告。
+                围绕 Excel 需求构建的多课程工作台，支持课程新增、再次编辑更新、实时计算预览，以及按单课程导出
+                3/4/5 报告。
               </p>
             </div>
             <Link
@@ -58,37 +59,42 @@ export default async function HomePage() {
                   <p>专业：{course.major || "未填写"}</p>
                 </div>
               </div>
-              <div className="mt-6 flex flex-wrap gap-3">
-                <Link
-                  href={`/courses/${course.id}`}
-                  className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-                >
-                  进入编辑
-                </Link>
-                <Link
-                  href={`/courses/${course.id}/scores`}
-                  className="rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  成绩录入
-                </Link>
-                <a
-                  href={`/api/courses/${course.id}/export/3`}
-                  className="rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  导出 3
-                </a>
-                <a
-                  href={`/api/courses/${course.id}/export/4`}
-                  className="rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  导出课程目标达成度
-                </a>
-                <a
-                  href={`/api/courses/${course.id}/export/5`}
-                  className="rounded-full border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  导出绘图数据
-                </a>
+              <div className="mt-6 space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <Link
+                    href={`/courses/${course.id}`}
+                    className="rounded-full bg-slate-900 px-4 py-2 text-center text-sm font-semibold text-white transition hover:bg-slate-800"
+                  >
+                    进入编辑
+                  </Link>
+                  <DeleteCourseButton
+                    courseId={course.id}
+                    courseName={course.courseName}
+                    className="w-full text-center"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <a
+                    href={`/api/courses/${course.id}/export/4`}
+                    className="rounded-full border border-slate-300 px-4 py-2 text-center text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    导出课程目标达成度
+                  </a>
+                  <a
+                    href={`/api/courses/${course.id}/export/5`}
+                    className="rounded-full border border-slate-300 px-4 py-2 text-center text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    导出绘图数据
+                  </a>
+                </div>
+                <div>
+                  <a
+                    href={`/api/courses/${course.id}/export/3`}
+                    className="block rounded-full border border-slate-300 px-4 py-2 text-center text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    导出课程达成度分析报告
+                  </a>
+                </div>
               </div>
             </article>
           ))}

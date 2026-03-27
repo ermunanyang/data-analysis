@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { courseInputSchema } from "@/lib/course-schema";
-import { getCourseInputById, saveCourse } from "@/lib/course-repository";
+import { deleteCourse, getCourseInputById, saveCourse } from "@/lib/course-repository";
 
 type RouteProps = {
   params: Promise<{ id: string }>;
@@ -27,6 +27,19 @@ export async function PUT(request: Request, { params }: RouteProps) {
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "更新课程失败" },
+      { status: 400 },
+    );
+  }
+}
+
+export async function DELETE(_request: Request, { params }: RouteProps) {
+  try {
+    const { id } = await params;
+    await deleteCourse(id);
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "删除课程失败" },
       { status: 400 },
     );
   }

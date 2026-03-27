@@ -348,6 +348,12 @@ export async function saveCourse(input: CourseInput, id?: string) {
   });
 }
 
+export async function deleteCourse(id: string) {
+  await prisma.course.delete({
+    where: { id },
+  });
+}
+
 export function createCourseDraft() {
   return createDefaultCourseInput();
 }
