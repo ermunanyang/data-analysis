@@ -91,24 +91,30 @@ export const courseInputSchema = z
     reportTexts: reportTextsInputSchema,
   })
   .superRefine((course, ctx) => {
-    course.targets.forEach((target, index) => {
+    course.methods.forEach((method, methodIndex) => {
+      if (!method.enabled || method.category !== "PROCESS") {
+        return;
+      }
+
       const processTotal = course.targetMethodConfigs
         .filter(
           (config) =>
-            config.targetIndex === index &&
+            config.methodIndex === methodIndex &&
             course.methods[config.methodIndex]?.enabled &&
             course.methods[config.methodIndex]?.category === "PROCESS",
         )
         .reduce((sum, config) => sum + config.weight, 0);
 
-      if (processTotal > 1.0001) {
+      if (Math.abs(processTotal - 1) > 1e-4) {
         ctx.addIssue({
           code: "custom",
           path: ["targetMethodConfigs"],
-          message: `${target.name} 的过程性评价构成不能超过 100%`,
+          message: `${method.name || "过程性评价"}的列总计必须等于 1`,
         });
       }
+    });
 
+    course.targets.forEach((target, index) => {
       if (target.processEvaluationRatio + target.resultEvaluationRatio > 1.0001) {
         ctx.addIssue({
           code: "custom",

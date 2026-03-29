@@ -65,12 +65,12 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
     [course.methods],
   );
 
-  const processColumnTotals = useMemo(
+  const processMethodTotals = useMemo(
     () =>
-      course.targets.map((_, targetIndex) =>
+      processMethodIndexes.map((methodIndex) =>
         round(
-          processMethodIndexes.reduce(
-            (sum, methodIndex) => sum + getConfig(course, targetIndex, methodIndex).weight,
+          course.targets.reduce(
+            (sum, _target, targetIndex) => sum + getConfig(course, targetIndex, methodIndex).weight,
             0,
           ),
         ),
@@ -200,7 +200,9 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
 
   function updateProcessWeight(targetIndex: number, methodIndex: number, value: number) {
     const nextValue = clampUnit(value);
-    const otherMethodIndexes = processMethodIndexes.filter((index) => index !== methodIndex);
+    const otherTargetIndexes = course.targets
+      .map((_, index) => index)
+      .filter((index) => index !== targetIndex);
 
     const nextConfigs = course.targetMethodConfigs.map((item) => ({ ...item }));
     const changedConfig = nextConfigs.find(
@@ -208,17 +210,17 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
     );
     if (!changedConfig) return;
 
-    changedConfig.weight = processMethodIndexes.length === 1 ? 1 : nextValue;
+    changedConfig.weight = course.targets.length === 1 ? 1 : nextValue;
 
-    if (otherMethodIndexes.length === 0) {
+    if (otherTargetIndexes.length === 0) {
       patch({ targetMethodConfigs: nextConfigs });
       return;
     }
 
     const remaining = clampUnit(1 - changedConfig.weight);
-    const otherConfigs = otherMethodIndexes
+    const otherConfigs = otherTargetIndexes
       .map((index) =>
-        nextConfigs.find((item) => item.targetIndex === targetIndex && item.methodIndex === index),
+        nextConfigs.find((item) => item.targetIndex === index && item.methodIndex === methodIndex),
       )
       .filter((item): item is NonNullable<typeof item> => Boolean(item));
 
@@ -239,12 +241,12 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
 
   function normalizeProcessWeights(
     configs: CourseInput["targetMethodConfigs"],
-    targetIndex: number,
-    remainingProcessIndexes: number[],
+    methodIndex: number,
+    remainingTargetIndexes: number[],
   ) {
     const nextConfigs = configs.map((item) => ({ ...item }));
-    const processConfigs = remainingProcessIndexes
-      .map((methodIndex) =>
+    const processConfigs = remainingTargetIndexes
+      .map((targetIndex) =>
         nextConfigs.find((item) => item.targetIndex === targetIndex && item.methodIndex === methodIndex),
       )
       .filter((item): item is NonNullable<typeof item> => Boolean(item));
@@ -431,16 +433,23 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
     const targetIndexMap = nextTargets.map((_, nextIndex) =>
       nextIndex >= index ? nextIndex + 1 : nextIndex,
     );
+    const remainingTargetIndexes = nextTargets.map((_, targetIndex) => targetIndex);
+    let nextConfigs = course.targetMethodConfigs
+      .filter((item) => item.targetIndex !== index)
+      .map((item) => ({
+        ...item,
+        targetIndex: item.targetIndex > index ? item.targetIndex - 1 : item.targetIndex,
+      }));
+
+    nextConfigs = processMethodIndexes.reduce(
+      (configs, methodIndex) => normalizeProcessWeights(configs, methodIndex, remainingTargetIndexes),
+      nextConfigs,
+    );
 
     patch({
       targets: nextTargets,
       targetMethodConfigs: syncResultTargetScores(
-        course.targetMethodConfigs
-          .filter((item) => item.targetIndex !== index)
-          .map((item) => ({
-            ...item,
-            targetIndex: item.targetIndex > index ? item.targetIndex - 1 : item.targetIndex,
-          })),
+        nextConfigs,
         course.examQuestions.map((question) => ({
           ...question,
           targetLabels: question.targetLabels.filter((_, targetIndex) => targetIndex !== index),
@@ -524,22 +533,12 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
       nextIndex >= index ? nextIndex + 1 : nextIndex,
     );
 
-    let nextConfigs = course.targetMethodConfigs
+    const nextConfigs = course.targetMethodConfigs
       .filter((item) => item.methodIndex !== index)
       .map((item) => ({
         ...item,
         methodIndex: item.methodIndex > index ? item.methodIndex - 1 : item.methodIndex,
       }));
-
-    const remainingProcessIndexes = nextMethods
-      .map((method, methodIndex) => ({ method, methodIndex }))
-      .filter((item) => item.method.category === "PROCESS")
-      .map((item) => item.methodIndex);
-
-    nextConfigs = course.targets.reduce(
-      (configs, _target, targetIndex) => normalizeProcessWeights(configs, targetIndex, remainingProcessIndexes),
-      nextConfigs,
-    );
 
     patch({
       methods: nextMethods,
@@ -805,18 +804,19 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
                         />
                       </TH>
                     ))}
-                    <TH>总计</TH>
                   </tr>
                 </thead>
                 <tbody>
                   {course.targets.map((target, targetIndex) => (
                     <tr key={target.name}>
                       <TD>{target.name}</TD>
-                      {processMethodIndexes.map((methodIndex) => (
+                      {processMethodIndexes.map((methodIndex, methodTotalIndex) => (
                         <TD key={`${target.name}-${methodIndex}`}>
                           <input
                             className={`${inputClass} ${
-                              processColumnTotals[targetIndex] > 1 ? "border-rose-300 bg-rose-50" : ""
+                              Math.abs(processMethodTotals[methodTotalIndex] - 1) > 0.0001
+                                ? "border-rose-300 bg-rose-50"
+                                : ""
                             }`}
                             type="number"
                             step="0.01"
@@ -825,17 +825,21 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
                           />
                         </TD>
                       ))}
-                      <TD>
-                        <span className={processColumnTotals[targetIndex] > 1 ? "text-rose-600" : "text-slate-700"}>
-                          {processColumnTotals[targetIndex]}
-                        </span>
-                      </TD>
                     </tr>
                   ))}
                   <tr className="bg-slate-50">
-                    <TD>操作</TD>
-                    {processMethodIndexes.map((methodIndex) => (
-                      <TD key={methodIndex}>
+                    <TD>总计</TD>
+                    {processMethodIndexes.map((methodIndex, index) => (
+                      <TD key={methodIndex} className="space-y-2 text-center align-middle">
+                        <div
+                          className={
+                            Math.abs(processMethodTotals[index] - 1) > 0.0001
+                              ? "font-semibold text-rose-600"
+                              : "font-semibold text-sky-700"
+                          }
+                        >
+                          {processMethodTotals[index]}
+                        </div>
                         <button
                           type="button"
                           onClick={() => removeProcessMethod(methodIndex)}
@@ -845,12 +849,11 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
                         </button>
                       </TD>
                     ))}
-                    <TD>总计恒等于 1</TD>
                   </tr>
                 </tbody>
               </table>
             </div>
-            <p className="text-sm text-slate-500">每个课程目标下的过程性评价总和固定为 1（即 100%）。</p>
+            <p className="text-sm text-slate-500">每个过程性评价方式一列的原始构成比例总和固定为 1。</p>
           </div>
 
           <div className="space-y-3">
