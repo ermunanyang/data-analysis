@@ -27,6 +27,7 @@ export const targetMethodConfigInputSchema = z.object({
   targetIndex: z.coerce.number().int().min(0),
   methodIndex: z.coerce.number().int().min(0),
   weight: z.coerce.number().min(0).max(1),
+  normalizedWeight: z.coerce.number().min(0).max(1).default(0),
   targetScore: z.coerce.number().min(0),
 });
 

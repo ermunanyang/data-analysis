@@ -50,16 +50,31 @@ function createDefaultMethods(): CourseInput["methods"] {
   ];
 }
 
-function syncDerivedTargetScores(input: CourseInput): CourseInput["targetMethodConfigs"] {
+function syncDerivedTargetMethodConfigs(input: CourseInput): CourseInput["targetMethodConfigs"] {
   return input.targetMethodConfigs.map((config) => {
     const method = input.methods[config.methodIndex];
     if (!method) {
-      return config;
+      return { ...config, normalizedWeight: 0 };
     }
+
+    const processConfigs = input.targetMethodConfigs.filter((item) => {
+      const currentMethod = input.methods[item.methodIndex];
+      return (
+        item.targetIndex === config.targetIndex &&
+        currentMethod?.enabled &&
+        currentMethod.category === "PROCESS"
+      );
+    });
+    const processTotal = processConfigs.reduce((sum, item) => sum + item.weight, 0);
+    const normalizedWeight =
+      method.category === "PROCESS" && method.enabled && processTotal > 0
+        ? Number((config.weight / processTotal).toFixed(4))
+        : 0;
 
     if (method.category === "RESULT") {
       return {
         ...config,
+        normalizedWeight,
         targetScore: input.examQuestions.reduce(
           (sum, question) => sum + (question.targetScores[config.targetIndex] ?? 0),
           0,
@@ -67,7 +82,10 @@ function syncDerivedTargetScores(input: CourseInput): CourseInput["targetMethodC
       };
     }
 
-    return config;
+    return {
+      ...config,
+      normalizedWeight,
+    };
   });
 }
 
@@ -95,6 +113,7 @@ export function createDefaultCourseInput(): CourseInput {
             : method.category === "PROCESS" && targetIndex === 3 && methodIndex === 1
               ? 100
               : 0,
+      normalizedWeight: 0,
     })),
   );
 
@@ -147,7 +166,7 @@ export function createDefaultCourseInput(): CourseInput {
 
   return {
     ...courseInput,
-    targetMethodConfigs: syncDerivedTargetScores(courseInput),
+    targetMethodConfigs: syncDerivedTargetMethodConfigs(courseInput),
   };
 }
 
@@ -168,7 +187,9 @@ function shouldDropLegacyMethod(
   if (!LEGACY_PLACEHOLDER_METHOD.test(method.name.trim())) return false;
 
   const hasConfigValue = input.targetMethodConfigs.some(
-    (config) => config.methodIndex === methodIndex && (config.weight > 0 || config.targetScore > 0),
+    (config) =>
+      config.methodIndex === methodIndex &&
+      (config.weight > 0 || config.normalizedWeight > 0 || config.targetScore > 0),
   );
 
   return !hasConfigValue && !hasStudentScoresForMethod(input, methodIndex);
@@ -297,6 +318,6 @@ export function normalizeStudentRows(input: CourseInput): CourseInput {
 
   return {
     ...normalizedInput,
-    targetMethodConfigs: syncDerivedTargetScores(normalizedInput),
+    targetMethodConfigs: syncDerivedTargetMethodConfigs(normalizedInput),
   };
 }

@@ -102,6 +102,7 @@ export async function getCourseInputById(id: string): Promise<CourseInput | null
           targetIndex,
           methodIndex,
           weight: toNumber(config?.weight),
+          normalizedWeight: toNumber(config?.normalizedWeight),
           targetScore: toNumber(config?.targetScore),
         };
       }),
@@ -268,6 +269,7 @@ export async function saveCourse(input: CourseInput, id?: string) {
         targetId: targetIds[config.targetIndex],
         methodId: methodIds[config.methodIndex],
         weight: config.weight,
+        normalizedWeight: config.normalizedWeight,
         targetScore: config.targetScore,
       })),
     });

@@ -178,7 +178,7 @@ function getConfig(input: CourseInput, targetIndex: number, methodIndex: number)
   return (
     input.targetMethodConfigs.find(
       (item) => item.targetIndex === targetIndex && item.methodIndex === methodIndex,
-    ) ?? { weight: 0, targetScore: 0 }
+    ) ?? { weight: 0, normalizedWeight: 0, targetScore: 0 }
   );
 }
 
@@ -244,10 +244,13 @@ function buildReportExportData(course: CourseInput): ReportExportData {
       const config = getConfig(course, targetIndex, method.index);
       const averageScore = getAverageStudentScore(course, method.index, targetIndex);
       const attainment = config.targetScore > 0 ? round(averageScore / config.targetScore) : 0;
+      const effectiveWeight = round(
+        (config.normalizedWeight ?? 0) * target.processEvaluationRatio * target.directWeight,
+      );
 
       return {
         name: method.name,
-        weight: config.weight,
+        weight: effectiveWeight,
         targetScore: config.targetScore,
         averageScore,
         attainment,
@@ -260,19 +263,20 @@ function buildReportExportData(course: CourseInput): ReportExportData {
       resultMethod ? getAverageStudentScore(course, resultMethod.index, targetIndex) : 0;
     const resultAttainment =
       resultConfig.targetScore > 0 ? round(resultAverageScore / resultConfig.targetScore) : 0;
-    const indirectWeight = round(target.surveyEvaluationRatio + target.otherEvaluationRatio);
+    const resultWeight = round(target.resultEvaluationRatio * target.directWeight);
+    const indirectWeight = round(target.indirectWeight);
     const indirectAverageScore = calculateIndirectAttainment(course, targetIndex);
 
     const finalAttainment = round(
       processItems.reduce((sum, item) => sum + item.attainment * item.weight, 0) +
-        resultAttainment * target.resultEvaluationRatio +
+        resultAttainment * resultWeight +
         indirectAverageScore * indirectWeight,
     );
 
     return {
       targetName: target.name,
       processItems,
-      resultWeight: target.resultEvaluationRatio,
+      resultWeight,
       resultTargetScore: resultConfig.targetScore,
       resultAverageScore,
       resultAttainment,

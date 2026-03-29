@@ -50,7 +50,7 @@ function getConfig(input: CourseInput, targetIndex: number, methodIndex: number)
   return (
     input.targetMethodConfigs.find(
       (item) => item.targetIndex === targetIndex && item.methodIndex === methodIndex,
-    ) ?? { weight: 0, targetScore: 0 }
+    ) ?? { weight: 0, normalizedWeight: 0, targetScore: 0 }
   );
 }
 
@@ -98,7 +98,15 @@ function getNormalizedProcessWeight(
   }
 
   const config = processConfigs.find((item) => item.methodIndex === methodIndex);
-  return config ? config.weight / totalWeight : 0;
+  if (!config) {
+    return 0;
+  }
+
+  if (config.normalizedWeight > 0) {
+    return config.normalizedWeight;
+  }
+
+  return config.weight / totalWeight;
 }
 
 function isStudentFilled(student: CourseInput["students"][number]) {

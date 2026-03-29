@@ -87,6 +87,7 @@ model TargetMethodConfig {
   targetId   String
   methodId   String
   weight     Decimal           @default(0) @db.Decimal(8, 4)
+  normalizedWeight Decimal     @default(0) @db.Decimal(8, 4)
   targetScore Decimal          @default(0) @db.Decimal(8, 2)
   course     Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
   target     CourseTarget      @relation(fields: [targetId], references: [id], onDelete: Cascade)

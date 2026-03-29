@@ -65,6 +65,19 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
     [course.methods],
   );
 
+  const processRowTotals = useMemo(
+    () =>
+      course.targets.map((_, targetIndex) =>
+        round(
+          processMethodIndexes.reduce(
+            (sum, methodIndex) => sum + getConfig(course, targetIndex, methodIndex).weight,
+            0,
+          ),
+        ),
+      ),
+    [course, processMethodIndexes],
+  );
+
   const processMethodTotals = useMemo(
     () =>
       processMethodIndexes.map((methodIndex) =>
@@ -333,6 +346,7 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
             targetIndex,
             methodIndex,
             weight: 0,
+            normalizedWeight: 0,
             targetScore: 0,
           })),
         ],
@@ -415,6 +429,7 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
         targetIndex,
         methodIndex: insertIndex,
         weight: 0,
+        normalizedWeight: 0,
         targetScore: 0,
       });
     });
@@ -727,6 +742,15 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
                         />
                       </TH>
                     ))}
+                    <TH>合计</TH>
+                    {processMethodIndexes.map((methodIndex) => (
+                      <TH key={`normalized-${methodIndex}`}>
+                        <div className="space-y-1">
+                          <div className="text-xs font-semibold text-slate-500">归一化</div>
+                          <div>{course.methods[methodIndex]?.name || "评价方式"}</div>
+                        </div>
+                      </TH>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
@@ -746,6 +770,17 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
                             value={getConfig(course, targetIndex, methodIndex).weight}
                             onChange={(e) => updateProcessWeight(targetIndex, methodIndex, Number(e.target.value))}
                           />
+                        </TD>
+                      ))}
+                      <TD className="text-center align-middle font-medium text-slate-700">
+                        {processRowTotals[targetIndex]}
+                      </TD>
+                      {processMethodIndexes.map((methodIndex) => (
+                        <TD
+                          key={`normalized-${target.name}-${methodIndex}`}
+                          className="text-center align-middle font-medium text-slate-700"
+                        >
+                          {getConfig(course, targetIndex, methodIndex).normalizedWeight}
                         </TD>
                       ))}
                     </tr>
@@ -772,11 +807,17 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
                         </button>
                       </TD>
                     ))}
+                    <TD className="text-center align-middle text-slate-500">每列总计为 1</TD>
+                    {processMethodIndexes.map((methodIndex) => (
+                      <TD key={`normalized-total-${methodIndex}`} className="text-center align-middle text-slate-400">
+                        -
+                      </TD>
+                    ))}
                   </tr>
                 </tbody>
               </table>
             </div>
-            <p className="text-sm text-slate-500">每个过程性评价方式一列的原始构成比例总和固定为 1。</p>
+            <p className="text-sm text-slate-500">归一化 = 当前单元格原始比例 / 该课程目标这一行的原始比例合计；过程性评价方式各列底部总计应为 1。</p>
           </div>
 
           <div className="space-y-3">
@@ -1363,7 +1404,7 @@ function getConfig(course: CourseInput, targetIndex: number, methodIndex: number
   return (
     course.targetMethodConfigs.find(
       (item) => item.targetIndex === targetIndex && item.methodIndex === methodIndex,
-    ) ?? { weight: 0, targetScore: 0 }
+    ) ?? { weight: 0, normalizedWeight: 0, targetScore: 0 }
   );
 }
 
