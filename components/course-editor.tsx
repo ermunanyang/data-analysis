@@ -199,78 +199,7 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
   }
 
   function updateProcessWeight(targetIndex: number, methodIndex: number, value: number) {
-    const nextValue = clampUnit(value);
-    const otherTargetIndexes = course.targets
-      .map((_, index) => index)
-      .filter((index) => index !== targetIndex);
-
-    const nextConfigs = course.targetMethodConfigs.map((item) => ({ ...item }));
-    const changedConfig = nextConfigs.find(
-      (item) => item.targetIndex === targetIndex && item.methodIndex === methodIndex,
-    );
-    if (!changedConfig) return;
-
-    changedConfig.weight = course.targets.length === 1 ? 1 : nextValue;
-
-    if (otherTargetIndexes.length === 0) {
-      patch({ targetMethodConfigs: nextConfigs });
-      return;
-    }
-
-    const remaining = clampUnit(1 - changedConfig.weight);
-    const otherConfigs = otherTargetIndexes
-      .map((index) =>
-        nextConfigs.find((item) => item.targetIndex === index && item.methodIndex === methodIndex),
-      )
-      .filter((item): item is NonNullable<typeof item> => Boolean(item));
-
-    const otherTotal = otherConfigs.reduce((sum, item) => sum + item.weight, 0);
-    let assigned = 0;
-
-    otherConfigs.forEach((config, index) => {
-      const isLast = index === otherConfigs.length - 1;
-      const normalized =
-        otherTotal > 0 ? remaining * (config.weight / otherTotal) : remaining / otherConfigs.length;
-      const nextWeight = isLast ? round(remaining - assigned) : round(normalized);
-      config.weight = clampUnit(nextWeight);
-      assigned += config.weight;
-    });
-
-    patch({ targetMethodConfigs: nextConfigs });
-  }
-
-  function normalizeProcessWeights(
-    configs: CourseInput["targetMethodConfigs"],
-    methodIndex: number,
-    remainingTargetIndexes: number[],
-  ) {
-    const nextConfigs = configs.map((item) => ({ ...item }));
-    const processConfigs = remainingTargetIndexes
-      .map((targetIndex) =>
-        nextConfigs.find((item) => item.targetIndex === targetIndex && item.methodIndex === methodIndex),
-      )
-      .filter((item): item is NonNullable<typeof item> => Boolean(item));
-
-    if (processConfigs.length === 0) {
-      return nextConfigs;
-    }
-
-    if (processConfigs.length === 1) {
-      processConfigs[0].weight = 1;
-      return nextConfigs;
-    }
-
-    const currentTotal = processConfigs.reduce((sum, item) => sum + item.weight, 0);
-    let assigned = 0;
-    processConfigs.forEach((config, index) => {
-      const isLast = index === processConfigs.length - 1;
-      const nextWeight =
-        currentTotal > 0 ? (config.weight / currentTotal) * 1 : 1 / processConfigs.length;
-      config.weight = isLast ? round(1 - assigned) : round(nextWeight);
-      assigned += config.weight;
-    });
-
-    return nextConfigs;
+    updateConfig(targetIndex, methodIndex, "weight", clampUnit(value));
   }
 
   function updatePairedTargetValues(
@@ -433,18 +362,12 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
     const targetIndexMap = nextTargets.map((_, nextIndex) =>
       nextIndex >= index ? nextIndex + 1 : nextIndex,
     );
-    const remainingTargetIndexes = nextTargets.map((_, targetIndex) => targetIndex);
-    let nextConfigs = course.targetMethodConfigs
+    const nextConfigs = course.targetMethodConfigs
       .filter((item) => item.targetIndex !== index)
       .map((item) => ({
         ...item,
         targetIndex: item.targetIndex > index ? item.targetIndex - 1 : item.targetIndex,
       }));
-
-    nextConfigs = processMethodIndexes.reduce(
-      (configs, methodIndex) => normalizeProcessWeights(configs, methodIndex, remainingTargetIndexes),
-      nextConfigs,
-    );
 
     patch({
       targets: nextTargets,
