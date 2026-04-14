@@ -31,8 +31,11 @@ function createPrismaClient() {
   });
 }
 
-export const prisma = globalThis.prisma ?? createPrismaClient();
+const shouldReuseGlobal = process.env.NODE_ENV === "production";
 
-if (process.env.NODE_ENV !== "production") {
+export const prisma =
+  shouldReuseGlobal && globalThis.prisma ? globalThis.prisma : createPrismaClient();
+
+if (shouldReuseGlobal) {
   globalThis.prisma = prisma;
 }

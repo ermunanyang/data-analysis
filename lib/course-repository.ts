@@ -11,8 +11,9 @@ function sortBy<T extends { sortOrder: number }>(rows: T[]) {
   return [...rows].sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
-export async function getCourseSummaries() {
+export async function getCourseSummaries(userId: string) {
   return prisma.course.findMany({
+    where: { userId },
     orderBy: { updatedAt: "desc" },
     select: {
       id: true,
@@ -26,9 +27,9 @@ export async function getCourseSummaries() {
   });
 }
 
-export async function getCourseInputById(id: string): Promise<CourseInput | null> {
-  const course = await prisma.course.findUnique({
-    where: { id },
+export async function getCourseInputById(id: string, userId: string): Promise<CourseInput | null> {
+  const course = await prisma.course.findFirst({
+    where: { id, userId },
     include: {
       targets: {
         orderBy: { sortOrder: "asc" },
@@ -167,13 +168,14 @@ function compactStudents(students: CourseInput["students"]) {
   return students.filter((student) => student.studentNo.trim() || student.studentName.trim());
 }
 
-export async function saveCourse(input: CourseInput, id?: string) {
+export async function saveCourse(input: CourseInput, userId: string, id?: string) {
   const parsed = courseInputSchema.parse(normalizeStudentRows(input));
   const students = compactStudents(parsed.students);
 
   return prisma.$transaction(async (tx) => {
     const duplicate = await tx.course.findFirst({
       where: {
+        userId,
         courseName: parsed.courseName,
         semester: parsed.semester,
         className: parsed.className,
@@ -187,6 +189,7 @@ export async function saveCourse(input: CourseInput, id?: string) {
     }
 
     const baseData = {
+      userId,
       courseName: parsed.courseName,
       courseCode: parsed.courseCode,
       courseType: parsed.courseType,
@@ -211,14 +214,26 @@ export async function saveCourse(input: CourseInput, id?: string) {
       teacherComment: parsed.reportTexts.teacherComment,
     };
 
-    const courseRecord = id
-      ? await tx.course.update({
-          where: { id },
-          data: baseData,
-        })
-      : await tx.course.create({
-          data: baseData,
-        });
+    let courseRecord;
+    if (id) {
+      const existingCourse = await tx.course.findFirst({
+        where: { id, userId },
+        select: { id: true },
+      });
+
+      if (!existingCourse) {
+        throw new Error("课程不存在或无权访问");
+      }
+
+      courseRecord = await tx.course.update({
+        where: { id },
+        data: baseData,
+      });
+    } else {
+      courseRecord = await tx.course.create({
+        data: baseData,
+      });
+    }
 
     await tx.studentScore.deleteMany({ where: { courseId: courseRecord.id } });
     await tx.indirectEvaluation.deleteMany({ where: { courseId: courseRecord.id } });
@@ -346,10 +361,12 @@ export async function saveCourse(input: CourseInput, id?: string) {
   });
 }
 
-export async function deleteCourse(id: string) {
-  await prisma.course.delete({
-    where: { id },
+export async function deleteCourse(id: string, userId: string) {
+  const result = await prisma.course.deleteMany({
+    where: { id, userId },
   });
+
+  return result.count > 0;
 }
 
 export function createCourseDraft() {

@@ -33,9 +33,9 @@ const steps: StepItem[] = [
 ];
 
 const inputClass =
-  "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900";
+  "w-full rounded-2xl border border-slate-200/90 bg-white/90 px-3 py-2.5 text-sm text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] outline-none focus:border-teal-400";
 const textareaClass = `${inputClass} min-h-24 resize-y`;
-const sectionClass = "rounded-3xl border border-slate-200 bg-white p-5 shadow-sm";
+const sectionClass = "app-glass rounded-3xl p-5 shadow-sm";
 
 export function CourseEditor({ initialCourse, courseId }: Props) {
   const router = useRouter();
@@ -1447,7 +1447,7 @@ function TH({
     <th
       colSpan={colSpan}
       rowSpan={rowSpan}
-      className="border border-slate-200 px-3 py-2 text-center font-semibold"
+      className="border border-slate-200/80 bg-slate-50/80 px-3 py-2.5 text-center font-semibold text-slate-700"
     >
       {children}
     </th>
@@ -1466,7 +1466,11 @@ function TD({
   className?: string;
 }) {
   return (
-    <td colSpan={colSpan} rowSpan={rowSpan} className={`border border-slate-200 p-2 align-top ${className ?? ""}`}>
+    <td
+      colSpan={colSpan}
+      rowSpan={rowSpan}
+      className={`border border-slate-200/80 bg-white/82 p-2 align-top ${className ?? ""}`}
+    >
       {children}
     </td>
   );

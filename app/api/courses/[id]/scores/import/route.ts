@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { getCurrentUser } from "@/lib/auth";
 import { getCourseInputById } from "@/lib/course-repository";
 import { importScoresFromWorkbook } from "@/lib/score-import";
 
@@ -9,8 +10,13 @@ type RouteProps = {
 
 export async function POST(request: Request, { params }: RouteProps) {
   try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: "未登录" }, { status: 401 });
+    }
+
     const { id } = await params;
-    const course = await getCourseInputById(id);
+    const course = await getCourseInputById(id, user.id);
 
     if (!course) {
       return NextResponse.json({ error: "课程不存在" }, { status: 404 });

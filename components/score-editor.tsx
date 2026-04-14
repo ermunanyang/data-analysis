@@ -21,13 +21,13 @@ type Props = {
 };
 
 const gutterClass =
-  "min-w-12 border border-slate-300 bg-slate-100 px-2 py-2 text-center font-medium text-slate-500";
+  "min-w-12 border border-slate-300 bg-slate-100/90 px-2 py-2 text-center font-medium text-slate-500";
 const stickyGutterClass =
   "sticky left-0 z-20 min-w-12 border border-slate-300 bg-slate-100 px-2 py-2 text-center font-medium text-slate-500 shadow-[inset_-1px_0_0_#cbd5e1,6px_0_10px_-8px_rgba(15,23,42,0.2)]";
 const scoreInputClass =
-  "h-full w-full bg-transparent px-2 py-2 text-center text-[13px] text-slate-900 outline-none placeholder:text-slate-300";
+  "h-full w-full rounded-xl bg-transparent px-2 py-2 text-center text-[13px] text-slate-900 outline-none placeholder:text-slate-300";
 const textInputClass =
-  "block min-h-10 min-w-[8rem] resize-x overflow-hidden bg-transparent px-2 py-2 text-left text-[13px] leading-5 text-slate-900 outline-none";
+  "block min-h-10 min-w-[8rem] resize-x overflow-hidden rounded-xl bg-transparent px-2 py-2 text-left text-[13px] leading-5 text-slate-900 outline-none";
 const readOnlyClass = "px-2 py-2 text-center text-[13px] font-medium text-slate-700";
 const stickyNameCellClass =
   "sticky left-12 z-30 min-w-[9rem] bg-white shadow-[inset_-1px_0_0_#cbd5e1,6px_0_10px_-8px_rgba(15,23,42,0.35)]";
@@ -213,10 +213,10 @@ export function ScoreEditor({ courseId, initialCourse }: Props) {
 
   return (
     <div className="mx-auto flex w-full max-w-[2200px] flex-col gap-6 px-4 py-6 pb-20">
-      <section className="rounded-[2rem] border border-slate-200 bg-[linear-gradient(135deg,#eff6ff_0%,#ffffff_50%,#fff7ed_100%)] p-6 shadow-sm">
+      <section className="app-glass-strong app-grid rounded-[2rem] p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="space-y-3">
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-sky-700">
+            <p className="inline-flex rounded-full bg-sky-50 px-4 py-1 text-sm font-semibold uppercase tracking-[0.2em] text-sky-700">
               Score Sheet Workspace
             </p>
             <div className="space-y-1">
@@ -231,7 +231,7 @@ export function ScoreEditor({ courseId, initialCourse }: Props) {
           <div className="flex flex-wrap gap-3">
             <Link
               href={`/courses/${courseId}`}
-              className="rounded-full border border-slate-300 px-4 py-2 text-sm text-slate-700 transition hover:border-slate-400 hover:text-slate-900"
+              className="rounded-full border border-slate-300 bg-white/75 px-4 py-2 text-sm text-slate-700 transition hover:border-sky-300 hover:bg-sky-50 hover:text-slate-900"
             >
               返回课程编辑
             </Link>
@@ -239,7 +239,7 @@ export function ScoreEditor({ courseId, initialCourse }: Props) {
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={importing}
-              className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700 transition hover:border-slate-400 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-full border border-slate-300 bg-white/80 px-4 py-2 text-sm text-slate-700 transition hover:border-amber-300 hover:bg-amber-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {importing ? "导入中..." : "导入成绩"}
             </button>
@@ -247,7 +247,7 @@ export function ScoreEditor({ courseId, initialCourse }: Props) {
               type="button"
               onClick={saveScores}
               disabled={pending}
-              className="rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-full bg-[linear-gradient(135deg,#0f172a_0%,#115e59_100%)] px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-teal-900/15 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {pending ? "保存中..." : "保存工作表"}
             </button>
@@ -279,7 +279,7 @@ export function ScoreEditor({ courseId, initialCourse }: Props) {
         ) : null}
       </section>
 
-      <section className="overflow-visible rounded-[2rem] border border-slate-200 bg-white shadow-sm">
+      <section className="app-glass overflow-visible rounded-[2rem]">
         <div
           ref={tableScrollRef}
           className="scrollbar-hidden overflow-x-auto overflow-y-visible bg-slate-100 p-4 pb-0"

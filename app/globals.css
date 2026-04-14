@@ -1,8 +1,14 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f6f9fc;
+  --background: #f3f7fb;
   --foreground: #172033;
+  --surface: rgba(255, 255, 255, 0.88);
+  --surface-strong: rgba(255, 255, 255, 0.96);
+  --line: rgba(148, 163, 184, 0.22);
+  --accent: #0f766e;
+  --accent-soft: #ecfeff;
+  --shadow-soft: 0 18px 50px rgba(15, 23, 42, 0.08);
 }
 
 @theme inline {
@@ -13,13 +19,22 @@
 }
 
 body {
-  background: var(--background);
+  background:
+    radial-gradient(circle at top left, rgba(190, 242, 255, 0.9) 0%, rgba(243, 247, 251, 0) 28%),
+    radial-gradient(circle at top right, rgba(255, 237, 213, 0.85) 0%, rgba(243, 247, 251, 0) 30%),
+    linear-gradient(180deg, #f6fbff 0%, #f5f7fb 48%, #fffaf2 100%);
   color: var(--foreground);
   font-family: var(--font-geist-sans), "PingFang SC", "Microsoft YaHei", sans-serif;
+  min-height: 100vh;
+  letter-spacing: 0.01em;
 }
 
 * {
   box-sizing: border-box;
+}
+
+*::selection {
+  background: rgba(15, 118, 110, 0.16);
 }
 
 a {
@@ -33,6 +48,30 @@ select {
   font: inherit;
 }
 
+button,
+a,
+input,
+textarea,
+select {
+  transition:
+    box-shadow 160ms ease,
+    border-color 160ms ease,
+    background-color 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 3px rgba(255, 255, 255, 0.92),
+    0 0 0 6px rgba(15, 118, 110, 0.16);
+}
+
 .scrollbar-hidden {
   -ms-overflow-style: none;
   scrollbar-width: none;
@@ -41,4 +80,25 @@ select {
 .scrollbar-hidden::-webkit-scrollbar {
   width: 0;
   height: 0;
+}
+
+.app-glass {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  backdrop-filter: blur(14px);
+  box-shadow: var(--shadow-soft);
+}
+
+.app-glass-strong {
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  background: var(--surface-strong);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.12);
+}
+
+.app-grid {
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
+  background-size: 24px 24px;
 }

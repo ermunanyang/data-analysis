@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { CourseEditor } from "@/components/course-editor";
+import { requireCurrentUser } from "@/lib/auth";
 import { getCourseInputById } from "@/lib/course-repository";
 
 type CoursePageProps = {
@@ -8,8 +9,9 @@ type CoursePageProps = {
 };
 
 export default async function CoursePage({ params }: CoursePageProps) {
+  const user = await requireCurrentUser();
   const { id } = await params;
-  const course = await getCourseInputById(id);
+  const course = await getCourseInputById(id, user.id);
 
   if (!course) {
     notFound();

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { ScoreEditor } from "@/components/score-editor";
+import { requireCurrentUser } from "@/lib/auth";
 import { getCourseInputById } from "@/lib/course-repository";
 
 type PageProps = {
@@ -8,8 +9,9 @@ type PageProps = {
 };
 
 export default async function CourseScoresPage({ params }: PageProps) {
+  const user = await requireCurrentUser();
   const { id } = await params;
-  const course = await getCourseInputById(id);
+  const course = await getCourseInputById(id, user.id);
 
   if (!course) {
     notFound();
