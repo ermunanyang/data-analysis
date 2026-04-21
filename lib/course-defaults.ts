@@ -31,14 +31,14 @@ function createDefaultTargets() {
     name: `课程目标${index + 1}`,
     summary: "",
     graduationRequirement: "",
-    supportStrength: "",
+    supportStrength: "L",
     overallWeight: 0,
-    processEvaluationRatio: index === 3 ? 1 : index < 2 ? 0.5 : 0,
-    resultEvaluationRatio: index < 3 ? 0.5 : 0,
-    surveyEvaluationRatio: 1,
+    processEvaluationRatio: 0,
+    resultEvaluationRatio: 0,
+    surveyEvaluationRatio: 0,
     otherEvaluationRatio: 0,
-    directWeight: 0.8,
-    indirectWeight: 0.2,
+    directWeight: 0,
+    indirectWeight: 0,
   }));
 }
 
@@ -291,9 +291,10 @@ export function normalizeStudentRows(input: CourseInput): CourseInput {
 
   const targets = sanitizedInput.targets.map((target) => ({
     ...target,
+    supportStrength: target.supportStrength || "L",
     otherEvaluationRatio: target.otherEvaluationRatio ?? 0,
-    directWeight: target.directWeight ?? input.directWeight ?? 0.8,
-    indirectWeight: target.indirectWeight ?? input.indirectWeight ?? 0.2,
+    directWeight: target.directWeight ?? 0,
+    indirectWeight: target.indirectWeight ?? 0,
   }));
 
   const indirectEvaluations = Array.from({ length: targetCount }, (_, targetIndex) => {

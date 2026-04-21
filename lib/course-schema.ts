@@ -13,7 +13,11 @@ export const courseTargetInputSchema = z.object({
   name: z.string().trim().min(1, "课程目标名称不能为空"),
   summary: z.string().default(""),
   graduationRequirement: z.string().default(""),
-  supportStrength: z.string().default(""),
+  supportStrength: z
+    .enum(["L", "M", "H"])
+    .or(z.literal(""))
+    .transform((value) => (value === "" ? "L" : value))
+    .default("L"),
   overallWeight: z.coerce.number().min(0).max(1),
   processEvaluationRatio: z.coerce.number().min(0).max(1),
   resultEvaluationRatio: z.coerce.number().min(0).max(1),

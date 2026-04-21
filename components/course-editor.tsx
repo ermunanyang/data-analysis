@@ -36,6 +36,7 @@ const inputClass =
   "w-full rounded-2xl border border-slate-200/90 bg-white/90 px-3 py-2.5 text-sm text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] outline-none focus:border-teal-400";
 const textareaClass = `${inputClass} min-h-24 resize-y`;
 const sectionClass = "app-glass rounded-3xl p-5 shadow-sm";
+const requiredHintClass = "text-xs font-semibold text-rose-600";
 
 export function CourseEditor({ initialCourse, courseId }: Props) {
   const router = useRouter();
@@ -97,6 +98,8 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
   );
 
   const clampUnit = (value: number) => Math.min(1, Math.max(0, Number.isFinite(value) ? value : 0));
+  const parseUnitInput = (value: string) => clampUnit(value.trim() === "" ? 0 : Number(value));
+  const safeUnitValue = (value: number) => (Number.isFinite(value) ? value : 0);
 
   function patch(value: Partial<CourseInput>) {
     setCourse((current) => normalizeStudentRows({ ...current, ...value }));
@@ -326,14 +329,14 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
         name: `课程目标${targetIndex + 1}`,
         summary: "",
         graduationRequirement: "",
-        supportStrength: "",
+        supportStrength: "L",
         overallWeight: 0,
         processEvaluationRatio: 0,
         resultEvaluationRatio: 0,
-        surveyEvaluationRatio: 1,
+        surveyEvaluationRatio: 0,
         otherEvaluationRatio: 0,
-        directWeight: 0.8,
-        indirectWeight: 0.2,
+        directWeight: 0,
+        indirectWeight: 0,
       },
     ];
 
@@ -646,7 +649,7 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
           </button>
         </div>
 
-        {error ? <p className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
+        {error ? <p className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{error}</p> : null}
         {message ? (
           <p className="mt-4 rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</p>
         ) : null}
@@ -656,11 +659,11 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
         <section className={sectionClass}>
           <h2 className="text-xl font-semibold">{steps[0].title}</h2>
           <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <Field label="课程名称"><input className={inputClass} value={course.courseName} onChange={(e) => patch({ courseName: e.target.value })} /></Field>
-            <Field label="课程编码"><input className={inputClass} value={course.courseCode} onChange={(e) => patch({ courseCode: e.target.value })} /></Field>
+            <Field label="课程名称" required><input className={inputClass} value={course.courseName} onChange={(e) => patch({ courseName: e.target.value })} /></Field>
+            <Field label="课程编码" required><input className={inputClass} value={course.courseCode} onChange={(e) => patch({ courseCode: e.target.value })} /></Field>
             <Field label="课程类别"><input className={inputClass} value={course.courseType} onChange={(e) => patch({ courseType: e.target.value })} /></Field>
-            <Field label="开课学期"><input className={inputClass} value={course.semester} onChange={(e) => patch({ semester: e.target.value })} /></Field>
-            <Field label="班级"><input className={inputClass} value={course.className} onChange={(e) => patch({ className: e.target.value })} /></Field>
+            <Field label="开课学期" required><input className={inputClass} value={course.semester} onChange={(e) => patch({ semester: e.target.value })} /></Field>
+            <Field label="班级" required><input className={inputClass} value={course.className} onChange={(e) => patch({ className: e.target.value })} /></Field>
             <Field label="专业"><input className={inputClass} value={course.major} onChange={(e) => patch({ major: e.target.value })} /></Field>
             <Field label="开课学院（部）"><input className={inputClass} value={course.department} onChange={(e) => patch({ department: e.target.value })} /></Field>
             <Field label="任课教师"><input className={inputClass} value={course.teacherNames} onChange={(e) => patch({ teacherNames: e.target.value })} /></Field>
@@ -699,7 +702,17 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
                     <TD><input className={inputClass} value={target.name} onChange={(e) => updateTarget(index, "name", e.target.value)} /></TD>
                     <TD><textarea className={textareaClass} value={target.summary} onChange={(e) => updateTarget(index, "summary", e.target.value)} /></TD>
                     <TD><textarea className={textareaClass} value={target.graduationRequirement} onChange={(e) => updateTarget(index, "graduationRequirement", e.target.value)} /></TD>
-                    <TD><input className={inputClass} value={target.supportStrength} onChange={(e) => updateTarget(index, "supportStrength", e.target.value)} /></TD>
+                    <TD>
+                      <select
+                        className={`${inputClass} text-center`}
+                        value={target.supportStrength || "L"}
+                        onChange={(e) => updateTarget(index, "supportStrength", e.target.value)}
+                      >
+                        <option value="L">L</option>
+                        <option value="M">M</option>
+                        <option value="H">H</option>
+                      </select>
+                    </TD>
                     <TD>
                       <button
                         type="button"
@@ -768,7 +781,7 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
                             type="number"
                             step="0.01"
                             value={getConfig(course, targetIndex, methodIndex).weight}
-                            onChange={(e) => updateProcessWeight(targetIndex, methodIndex, Number(e.target.value))}
+                            onChange={(e) => updateProcessWeight(targetIndex, methodIndex, parseUnitInput(e.target.value))}
                           />
                         </TD>
                       ))}
@@ -851,9 +864,9 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
                           }`}
                           type="number"
                           step="0.01"
-                          value={target.processEvaluationRatio}
+                          value={safeUnitValue(target.processEvaluationRatio)}
                           onChange={(e) =>
-                            updatePairedTargetValues(index, "processEvaluationRatio", "resultEvaluationRatio", Number(e.target.value))
+                            updatePairedTargetValues(index, "processEvaluationRatio", "resultEvaluationRatio", parseUnitInput(e.target.value))
                           }
                         />
                       </TD>
@@ -866,9 +879,9 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
                           }`}
                           type="number"
                           step="0.01"
-                          value={target.resultEvaluationRatio}
+                          value={safeUnitValue(target.resultEvaluationRatio)}
                           onChange={(e) =>
-                            updatePairedTargetValues(index, "resultEvaluationRatio", "processEvaluationRatio", Number(e.target.value))
+                            updatePairedTargetValues(index, "resultEvaluationRatio", "processEvaluationRatio", parseUnitInput(e.target.value))
                           }
                         />
                       </TD>
@@ -930,9 +943,9 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
                           }`}
                           type="number"
                           step="0.01"
-                          value={target.surveyEvaluationRatio}
+                          value={safeUnitValue(target.surveyEvaluationRatio)}
                           onChange={(e) =>
-                            updatePairedTargetValues(index, "surveyEvaluationRatio", "otherEvaluationRatio", Number(e.target.value))
+                            updatePairedTargetValues(index, "surveyEvaluationRatio", "otherEvaluationRatio", parseUnitInput(e.target.value))
                           }
                         />
                       </TD>
@@ -945,9 +958,9 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
                           }`}
                           type="number"
                           step="0.01"
-                          value={target.otherEvaluationRatio}
+                          value={safeUnitValue(target.otherEvaluationRatio)}
                           onChange={(e) =>
-                            updatePairedTargetValues(index, "otherEvaluationRatio", "surveyEvaluationRatio", Number(e.target.value))
+                            updatePairedTargetValues(index, "otherEvaluationRatio", "surveyEvaluationRatio", parseUnitInput(e.target.value))
                           }
                         />
                       </TD>
@@ -1009,9 +1022,9 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
                           }`}
                           type="number"
                           step="0.01"
-                          value={target.directWeight}
+                          value={safeUnitValue(target.directWeight)}
                           onChange={(e) =>
-                            updatePairedTargetValues(index, "directWeight", "indirectWeight", Number(e.target.value))
+                            updatePairedTargetValues(index, "directWeight", "indirectWeight", parseUnitInput(e.target.value))
                           }
                         />
                       </TD>
@@ -1024,9 +1037,9 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
                           }`}
                           type="number"
                           step="0.01"
-                          value={target.indirectWeight}
+                          value={safeUnitValue(target.indirectWeight)}
                           onChange={(e) =>
-                            updatePairedTargetValues(index, "indirectWeight", "directWeight", Number(e.target.value))
+                            updatePairedTargetValues(index, "indirectWeight", "directWeight", parseUnitInput(e.target.value))
                           }
                         />
                       </TD>
@@ -1347,7 +1360,7 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
         <section className={`${sectionClass} space-y-6`}>
           <h2 className="text-xl font-semibold">{steps[6].title}</h2>
           <div className="overflow-x-auto">
-            <table className="min-w-full max-w-xl border-separate border-spacing-0 text-center text-sm">
+            <table className="min-w-full max-w-xl border-separate border-spacing-0 text-center text-sm [&_td]:align-middle [&_td]:text-center [&_input]:text-center">
               <thead>
                 <tr className="bg-slate-100">
                   <TH>课程目标</TH>
@@ -1367,8 +1380,8 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
                         step="0.01"
                         min="0"
                         max="1"
-                        value={target.overallWeight}
-                        onChange={(e) => updateTarget(index, "overallWeight", Number(e.target.value))}
+                        value={safeUnitValue(target.overallWeight)}
+                        onChange={(e) => updateTarget(index, "overallWeight", parseUnitInput(e.target.value))}
                       />
                     </TD>
                   </tr>
@@ -1416,10 +1429,21 @@ function formatDecimal(value: number) {
   return value.toFixed(2);
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  children,
+  required = false,
+}: {
+  label: string;
+  children: React.ReactNode;
+  required?: boolean;
+}) {
   return (
     <label className="grid gap-2 text-sm font-medium text-slate-700">
-      <span>{label}</span>
+      <span className="flex items-center gap-2">
+        <span>{label}</span>
+        {required ? <span className={requiredHintClass}>必填</span> : null}
+      </span>
       {children}
     </label>
   );

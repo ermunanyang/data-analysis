@@ -5,9 +5,25 @@ import { LogoutButton } from "@/components/logout-button";
 import { requireCurrentUser } from "@/lib/auth";
 import { getCourseSummaries } from "@/lib/course-repository";
 
-export default async function HomePage() {
+type HomePageProps = {
+  searchParams?: Promise<{
+    semester?: string;
+  }>;
+};
+
+export default async function HomePage({ searchParams }: HomePageProps) {
   const user = await requireCurrentUser();
   const courses = await getCourseSummaries(user.id);
+  const params = searchParams ? await searchParams : undefined;
+  const selectedSemester = params?.semester?.trim() ?? "";
+
+  const semesterOptions = Array.from(
+    new Set(courses.map((course) => course.semester.trim()).filter(Boolean)),
+  ).sort((a, b) => b.localeCompare(a, "zh-CN"));
+
+  const filteredCourses = selectedSemester
+    ? courses.filter((course) => course.semester === selectedSemester)
+    : courses;
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,#dff3ff_0%,#f7fbff_32%,#f8fafc_68%,#fff8ec_100%)]">
@@ -38,13 +54,55 @@ export default async function HomePage() {
           </div>
         </section>
 
+        <section className="app-glass rounded-[2rem] p-5">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div className="space-y-1">
+              <h2 className="text-lg font-semibold text-slate-900">课程列表</h2>
+              <p className="text-sm text-slate-500">
+                支持按学期筛选当前账号下的课程记录。
+              </p>
+            </div>
+
+            <form className="flex flex-nowrap items-center gap-3" action="/">
+              <select
+                name="semester"
+                defaultValue={selectedSemester}
+                className="min-w-48 rounded-2xl border border-slate-200/90 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none focus:border-teal-400"
+              >
+                <option value="">全部学期</option>
+                {semesterOptions.map((semester) => (
+                  <option key={semester} value={semester}>
+                    {semester}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="submit"
+                className="rounded-full border border-slate-300 bg-white/80 px-4 py-2 text-sm font-medium text-slate-700 hover:border-teal-300 hover:bg-teal-50/80"
+              >
+                筛选
+              </button>
+              {selectedSemester ? (
+                <Link
+                  href="/"
+                  className="rounded-full border border-slate-300 bg-white/80 px-4 py-2 text-sm font-medium text-slate-700 hover:border-rose-300 hover:bg-rose-50/80"
+                >
+                  清除筛选
+                </Link>
+              ) : null}
+            </form>
+          </div>
+        </section>
+
         <section className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-          {courses.length === 0 ? (
+          {filteredCourses.length === 0 ? (
             <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white/80 p-8 text-slate-600">
-              你还没有课程记录，先创建第一门课程吧。
+              {selectedSemester
+                ? `当前学期“${selectedSemester}”下还没有课程记录。`
+                : "你还没有课程记录，先创建第一门课程吧。"}
             </div>
           ) : null}
-          {courses.map((course) => (
+          {filteredCourses.map((course) => (
             <article
               key={course.id}
               className="app-glass overflow-hidden rounded-[2rem] p-6 hover:-translate-y-1 hover:shadow-xl"
@@ -94,12 +152,20 @@ export default async function HomePage() {
                   </a>
                 </div>
                 <div>
-                  <a
-                    href={`/api/courses/${course.id}/export/3`}
-                    className="block rounded-full border border-slate-300 bg-white/70 px-4 py-2 text-center text-sm font-medium text-slate-700 hover:border-sky-300 hover:bg-sky-50/80"
-                  >
-                    导出课程达成度分析报告
-                  </a>
+                  <div className="grid gap-3">
+                    <a
+                      href={`/api/courses/${course.id}/export/3`}
+                      className="block rounded-full border border-slate-300 bg-white/70 px-4 py-2 text-center text-sm font-medium text-slate-700 hover:border-sky-300 hover:bg-sky-50/80"
+                    >
+                      导出课程达成度分析报告
+                    </a>
+                    <a
+                      href="/api/templates/attainment-example"
+                      className="block rounded-full border border-slate-300 bg-white/70 px-4 py-2 text-center text-sm font-medium text-slate-700 hover:border-violet-300 hover:bg-violet-50/80"
+                    >
+                      下载模板
+                    </a>
+                  </div>
                 </div>
               </div>
             </article>
