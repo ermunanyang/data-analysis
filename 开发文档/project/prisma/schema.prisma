@@ -1,0 +1,329 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Course {
+  id              String               @id @default(cuid())
+  userId          String?
+  courseName      String
+  courseCode      String
+  courseType      String?
+  semester        String
+  className       String
+  department      String?
+  major           String?
+  teacherNames    String?
+  ownerTeacher    String?
+  hours           String?
+  credit          String?
+  selectedCount   Int                  @default(0)
+  evaluatedCount  Int                  @default(0)
+  targetCount     Int                  @default(7)
+  expectedValue   Decimal              @default(0.65)
+  directWeight    Decimal              @default(0.8)
+  indirectWeight  Decimal              @default(0.2)
+  surveyWeight    Decimal              @default(1)
+  analysisText    String
+  problemText     String
+  improvementText String
+  teacherComment  String
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  user            User?                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  targets         CourseTarget[]
+  methods         AssessmentMethod[]
+  students        Student[]
+  examQuestions   ExamQuestion[]
+  methodConfigs   TargetMethodConfig[]
+  scores          StudentScore[]
+  indirectResults IndirectEvaluation[]
+
+  @@unique([userId, courseName, semester, className])
+}
+
+model User {
+  id           String     @id @default(cuid())
+  username     String     @unique
+  passwordHash String
+  apiKeyEncrypted String?
+  apiKeyType   String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  courses      Course[]
+  sessions     Session[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model CourseTarget {
+  id                         String               @id @default(cuid())
+  courseId                   String
+  sortOrder                  Int
+  name                       String
+  summary                    String
+  graduationRequirement      String
+  supportStrength            String?
+  overallWeight              Decimal              @default(0)
+  processEvaluationRatio     Decimal              @default(0)
+  resultEvaluationRatio      Decimal              @default(0)
+  surveyEvaluationRatio      Decimal              @default(1)
+  otherEvaluationRatio       Decimal              @default(0)
+  directWeight               Decimal              @default(0.8)
+  indirectWeight             Decimal              @default(0.2)
+  course                     Course               @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  methodConfigs              TargetMethodConfig[]
+  scores                     StudentScore[]
+  indirectEvaluation         IndirectEvaluation?
+
+  @@unique([courseId, sortOrder])
+}
+
+model AssessmentMethod {
+  id            String               @id @default(cuid())
+  courseId      String
+  sortOrder     Int
+  name          String
+  category      AssessmentCategory
+  fullScore     Decimal              @default(100)
+  enabled       Boolean              @default(true)
+  course        Course               @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  targetConfigs TargetMethodConfig[]
+  scores        StudentScore[]
+
+  @@unique([courseId, sortOrder])
+}
+
+model TargetMethodConfig {
+  id         String            @id @default(cuid())
+  courseId   String
+  targetId   String
+  methodId   String
+  weight     Decimal           @default(0)
+  normalizedWeight Decimal     @default(0)
+  targetScore Decimal          @default(0)
+  course     Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  target     CourseTarget      @relation(fields: [targetId], references: [id], onDelete: Cascade)
+  method     AssessmentMethod  @relation(fields: [methodId], references: [id], onDelete: Cascade)
+
+  @@unique([targetId, methodId])
+}
+
+model Student {
+  id         String         @id @default(cuid())
+  courseId   String
+  sortOrder  Int
+  majorName  String?
+  className  String?
+  studentNo  String
+  studentName String
+  course     Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  scores     StudentScore[]
+
+  @@unique([courseId, studentNo])
+}
+
+model ExamQuestion {
+  id         String   @id @default(cuid())
+  courseId   String
+  sortOrder  Int
+  label      String
+  title      String
+  score      Decimal  @default(0)
+  targetLabels Json?
+  targetScores Json
+  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, sortOrder])
+}
+
+model StudentScore {
+  id        String           @id @default(cuid())
+  courseId  String
+  studentId String
+  methodId  String
+  targetId  String
+  score     Decimal?
+  course    Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  student   Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  method    AssessmentMethod @relation(fields: [methodId], references: [id], onDelete: Cascade)
+  target    CourseTarget     @relation(fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, methodId, targetId])
+}
+
+model IndirectEvaluation {
+  id       String      @id @default(cuid())
+  courseId String
+  targetId String      @unique
+  countA   Int         @default(0)
+  countB   Int         @default(0)
+  countC   Int         @default(0)
+  countD   Int         @default(0)
+  countE   Int         @default(0)
+  course   Course      @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  target   CourseTarget @relation(fields: [targetId], references: [id], onDelete: Cascade)
+}
+
+enum AssessmentCategory {
+  PROCESS
+  RESULT
+  OTHER
+}
+
+model Admin {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  loginRecords AdminLoginRecord[]
+  adminSettings AdminSetting[]
+}
+
+model AdminLoginRecord {
+  id          String   @id @default(cuid())
+  adminId     String
+  loginTime   DateTime @default(now())
+  ipAddress   String?
+  userAgent   String?
+  deviceInfo  String?
+  loginStatus String   @default("success")
+  admin       Admin    @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId])
+  @@index([loginTime])
+}
+
+model UserOperationLog {
+  id           String   @id @default(cuid())
+  userId       String?
+  username     String?
+  action       String
+  module       String
+  description  String?
+  requestPath  String?
+  requestMethod String?
+  requestParams String?
+  responseStatus Int?
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+  @@index([username])
+  @@index([action])
+  @@index([module])
+  @@index([createdAt])
+}
+
+model SystemErrorLog {
+  id          String   @id @default(cuid())
+  errorType   String
+  errorMessage String
+  stackTrace  String?
+  requestPath String?
+  requestMethod String?
+  requestParams String?
+  userId      String?
+  username    String?
+  ipAddress   String?
+  userAgent   String?
+  severity    String   @default("error")
+  resolved    Boolean  @default(false)
+  resolvedAt DateTime?
+  resolvedBy  String?
+  createdAt   DateTime @default(now())
+
+  @@index([errorType])
+  @@index([severity])
+  @@index([resolved])
+  @@index([createdAt])
+}
+
+model ApiAccessLog {
+  id           String   @id @default(cuid())
+  requestPath  String
+  requestMethod String
+  requestParams String?
+  responseStatus Int?
+  responseTime  Int?
+  requestIp    String?
+  userId       String?
+  username     String?
+  userAgent    String?
+  apiModule    String?
+  createdAt    DateTime @default(now())
+
+  @@index([requestPath])
+  @@index([requestMethod])
+  @@index([responseStatus])
+  @@index([createdAt])
+  @@index([requestIp])
+}
+
+model FileRecord {
+  id           String   @id @default(cuid())
+  fileName     String
+  originalName String
+  filePath     String
+  fileSize     Int
+  fileType     String
+  fileCategory String
+  uploadedBy   String?
+  uploadedAt   DateTime @default(now())
+  description  String?
+  isDeleted    Boolean  @default(false)
+  deletedAt    DateTime?
+
+  @@index([fileType])
+  @@index([fileCategory])
+  @@index([uploadedAt])
+  @@index([isDeleted])
+}
+
+model AdminSetting {
+  id          String   @id @default(cuid())
+  settingKey  String   @unique
+  settingValue String
+  settingType String   @default("string")
+  description String?
+  category    String   @default("general")
+  updatedAt   DateTime @updatedAt
+  adminId     String?
+  admin       Admin?   @relation(fields: [adminId], references: [id])
+
+  @@index([settingKey])
+  @@index([category])
+}
+
+model DataBackup {
+  id           String   @id @default(cuid())
+  backupName   String
+  backupPath   String
+  backupType   String
+  backupSize   Int?
+  status       String   @default("completed")
+  createdAt    DateTime @default(now())
+  completedAt  DateTime?
+  description  String?
+  backupFileUrl String?
+
+  @@index([backupType])
+  @@index([status])
+  @@index([createdAt])
+}

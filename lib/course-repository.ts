@@ -81,7 +81,7 @@ export async function getCourseInputById(id: string, userId: string): Promise<Co
       name: target.name,
       summary: target.summary,
       graduationRequirement: target.graduationRequirement,
-      supportStrength: target.supportStrength ?? "",
+      supportStrength: (target.supportStrength ?? "L") as "L" | "M" | "H",
       overallWeight: toNumber(target.overallWeight),
       processEvaluationRatio: toNumber(target.processEvaluationRatio),
       resultEvaluationRatio: toNumber(target.resultEvaluationRatio),

@@ -1,8 +1,10 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Fragment, useDeferredValue, useMemo, useState, useTransition } from "react";
+
+import { MajorSelector } from "@/components/major-selector";
 
 import { calculateCourse } from "@/lib/course-calculator";
 import {
@@ -30,6 +32,7 @@ const steps: StepItem[] = [
   { title: "五、考试试题对应课程分目标", hint: "按题号与分值维护各课程目标对应试题，可新增和删除。" },
   { title: "六、课程目标达成度目标分值", hint: "过程性评价目标分值可自动生成，生成后仍可继续编辑。" },
   { title: "七、课程分目标权重", hint: "维护课程目标权重，并填写教师分析、问题和改进措施。" },
+  { title: "八、学生信息管理", hint: "手动添加、编辑和删除学生信息，包括专业、班级、学号和姓名。" },
 ];
 
 const inputClass =
@@ -48,6 +51,8 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
   const [message, setMessage] = useState("");
   const [examQuestionLabelDrafts, setExamQuestionLabelDrafts] = useState<Record<string, string>>({});
   const [examTargetScoreDrafts, setExamTargetScoreDrafts] = useState<Record<string, string>>({});
+  const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
+  const [aiError, setAiError] = useState("");
   const [pending, startTransition] = useTransition();
   const preview = calculateCourse(useDeferredValue(course));
   const isEdit = Boolean(courseId);
@@ -323,13 +328,13 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
 
   function addTarget() {
     const targetIndex = course.targets.length;
-    const nextTargets = [
+    const nextTargets: typeof course.targets = [
       ...course.targets,
       {
         name: `课程目标${targetIndex + 1}`,
         summary: "",
         graduationRequirement: "",
-        supportStrength: "L",
+        supportStrength: "L" as const,
         overallWeight: 0,
         processEvaluationRatio: 0,
         resultEvaluationRatio: 0,
@@ -520,6 +525,32 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
     });
   }
 
+  function updateStudentField(
+    studentIndex: number,
+    key: keyof Omit<CourseInput["students"][number], "scores">,
+    value: string,
+  ) {
+    setCourse((current) => {
+      const students = [...current.students];
+      students[studentIndex] = { ...students[studentIndex], [key]: value };
+      return { ...current, students };
+    });
+  }
+
+  function addStudent() {
+    const newStudent = createEmptyStudent(course.methods.length, course.targets.length);
+    patch({
+      students: [...course.students, newStudent],
+    });
+  }
+
+  function removeStudent(index: number) {
+    const students = course.students.filter((_, studentIndex) => studentIndex !== index);
+    patch({
+      students: students.length > 0 ? students : [createEmptyStudent(course.methods.length, course.targets.length)],
+    });
+  }
+
   function syncResultTargetScores(
     configs: CourseInput["targetMethodConfigs"],
     examQuestions: CourseInput["examQuestions"],
@@ -543,6 +574,55 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
     });
   }
 
+  async function handleAiAnalysis() {
+    if (!courseId) {
+      setAiError("请先保存课程后再使用AI分析功能");
+      return;
+    }
+
+    setIsAiAnalyzing(true);
+    setAiError("");
+
+    try {
+      const response = await fetch(`/api/courses/${courseId}/analyze`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        patch({
+          reportTexts: {
+            ...course.reportTexts,
+            analysisText: data.data.analysisText || "",
+            problemText: data.data.problemText || "",
+            improvementText: data.data.improvementText || "",
+          },
+        });
+        setMessage("AI分析完成，已填充分析内容");
+      } else {
+        const errorMsg = data.error || "分析失败，请稍后重试";
+        if (data.needResetKey) {
+          setAiError(`${errorMsg}（请点击首页的"API Key设置"重新配置）`);
+        } else if (errorMsg.includes("网络连接")) {
+          setAiError(`${errorMsg}（可能是由于网络限制或API服务不可用，请检查网络连接）`);
+        } else {
+          setAiError(errorMsg);
+        }
+      }
+    } catch (fetchError) {
+      const err = fetchError as Error;
+      if (err.message.includes("fetch failed") || err.message.includes("Failed to fetch")) {
+        setAiError("网络连接失败，请检查网络连接或稍后重试（可能是由于网络限制）");
+      } else {
+        setAiError(`请求失败: ${err.message}`);
+      }
+    } finally {
+      setIsAiAnalyzing(false);
+    }
+  }
+
   async function save() {
     setError("");
     setMessage("");
@@ -556,6 +636,9 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
         });
         const payload = await response.json().catch(() => null);
         if (!response.ok) {
+          if (payload?.errors && Array.isArray(payload.errors)) {
+            throw new Error(payload.errors.join("；"));
+          }
           throw new Error(payload?.error ?? "保存失败");
         }
         setMessage("课程方案已保存");
@@ -664,7 +747,7 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
             <Field label="课程类别"><input className={inputClass} value={course.courseType} onChange={(e) => patch({ courseType: e.target.value })} /></Field>
             <Field label="开课学期" required><input className={inputClass} value={course.semester} onChange={(e) => patch({ semester: e.target.value })} /></Field>
             <Field label="班级" required><input className={inputClass} value={course.className} onChange={(e) => patch({ className: e.target.value })} /></Field>
-            <Field label="专业"><input className={inputClass} value={course.major} onChange={(e) => patch({ major: e.target.value })} /></Field>
+            <Field label="专业"><MajorSelector value={course.major} onChange={(value) => patch({ major: value })} className={inputClass} /></Field>
             <Field label="开课学院（部）"><input className={inputClass} value={course.department} onChange={(e) => patch({ department: e.target.value })} /></Field>
             <Field label="任课教师"><input className={inputClass} value={course.teacherNames} onChange={(e) => patch({ teacherNames: e.target.value })} /></Field>
             <Field label="课程负责人"><input className={inputClass} value={course.ownerTeacher} onChange={(e) => patch({ ownerTeacher: e.target.value })} /></Field>
@@ -1407,6 +1490,174 @@ export function CourseEditor({ initialCourse, courseId }: Props) {
             分目标权重之和必须等于 1。
           </p>
 
+          <div className="mt-6 space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-lg font-semibold">报告内容编辑</h3>
+              <button
+                type="button"
+                onClick={handleAiAnalysis}
+                disabled={isAiAnalyzing}
+                className="rounded-full bg-gradient-to-r from-teal-500 to-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-teal-900/20 disabled:opacity-50"
+              >
+                {isAiAnalyzing ? (
+                  <span className="flex items-center gap-2">
+                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    AI分析中...
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2">
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                    </svg>
+                    AI辅助分析
+                  </span>
+                )}
+              </button>
+            </div>
+
+            {aiError && (
+              <p className="rounded-lg bg-rose-50 px-4 py-3 text-sm text-rose-600">
+                {aiError}
+              </p>
+            )}
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  （一）课程分析
+                </label>
+                <textarea
+                  className={textareaClass}
+                  value={course.reportTexts.analysisText}
+                  onChange={(e) => patch({ reportTexts: { ...course.reportTexts, analysisText: e.target.value } })}
+                  placeholder="请输入课程分析内容..."
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  （二）存在问题
+                </label>
+                <textarea
+                  className={textareaClass}
+                  value={course.reportTexts.problemText}
+                  onChange={(e) => patch({ reportTexts: { ...course.reportTexts, problemText: e.target.value } })}
+                  placeholder="请输入存在的问题..."
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  （三）改进措施
+                </label>
+                <textarea
+                  className={textareaClass}
+                  value={course.reportTexts.improvementText}
+                  onChange={(e) => patch({ reportTexts: { ...course.reportTexts, improvementText: e.target.value } })}
+                  placeholder="请输入改进措施..."
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  （四）教师评价
+                </label>
+                <textarea
+                  className={textareaClass}
+                  value={course.reportTexts.teacherComment}
+                  onChange={(e) => patch({ reportTexts: { ...course.reportTexts, teacherComment: e.target.value } })}
+                  placeholder="请输入教师评价..."
+                />
+              </div>
+            </div>
+          </div>
+
+        </section>
+      ) : null}
+
+      {currentStep === 7 ? (
+        <section className={`${sectionClass} space-y-4`}>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-xl font-semibold">{steps[7].title}</h2>
+            <button
+              type="button"
+              onClick={addStudent}
+              className="rounded-full border border-slate-300 px-4 py-2 text-sm"
+            >
+              新增学生
+            </button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full border-separate border-spacing-0 text-sm">
+              <thead>
+                <tr className="bg-slate-100">
+                  <TH>序号</TH>
+                  <TH>专业</TH>
+                  <TH>班级</TH>
+                  <TH>学号</TH>
+                  <TH>姓名</TH>
+                  <TH>操作</TH>
+                </tr>
+              </thead>
+              <tbody>
+                {course.students.map((student, index) => (
+                  <tr key={index}>
+                    <TD className="text-center align-middle font-medium text-slate-600">
+                      {index + 1}
+                    </TD>
+                    <TD>
+                      <input
+                        className={inputClass}
+                        value={student.majorName}
+                        onChange={(e) =>
+                          updateStudentField(index, "majorName", e.target.value)
+                        }
+                      />
+                    </TD>
+                    <TD>
+                      <input
+                        className={inputClass}
+                        value={student.className}
+                        onChange={(e) =>
+                          updateStudentField(index, "className", e.target.value)
+                        }
+                      />
+                    </TD>
+                    <TD>
+                      <input
+                        className={inputClass}
+                        value={student.studentNo}
+                        onChange={(e) =>
+                          updateStudentField(index, "studentNo", e.target.value)
+                        }
+                      />
+                    </TD>
+                    <TD>
+                      <input
+                        className={inputClass}
+                        value={student.studentName}
+                        onChange={(e) =>
+                          updateStudentField(index, "studentName", e.target.value)
+                        }
+                      />
+                    </TD>
+                    <TD className="text-center align-middle">
+                      <button
+                        type="button"
+                        onClick={() => removeStudent(index)}
+                        className="rounded-full border border-rose-200 px-3 py-1 text-xs text-rose-600"
+                      >
+                        删除
+                      </button>
+                    </TD>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-sm text-slate-500">
+            提示：空白行在保存时会被自动过滤，您可以放心添加空行以便后续录入。
+          </p>
         </section>
       ) : null}
     </div>

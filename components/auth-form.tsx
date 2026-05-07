@@ -44,7 +44,6 @@ export function AuthForm({ mode }: Props) {
 
       startTransition(() => {
         router.replace("/");
-        router.refresh();
       });
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "提交失败");

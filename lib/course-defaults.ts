@@ -31,7 +31,7 @@ function createDefaultTargets() {
     name: `课程目标${index + 1}`,
     summary: "",
     graduationRequirement: "",
-    supportStrength: "L",
+    supportStrength: "L" as const,
     overallWeight: 0,
     processEvaluationRatio: 0,
     resultEvaluationRatio: 0,

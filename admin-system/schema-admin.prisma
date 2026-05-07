@@ -1,0 +1,153 @@
+// Prisma Schema Extension for Admin Management System
+// This extends the existing schema.prisma with admin system models
+
+// Admin Account - Single super administrator
+model Admin {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  loginRecords AdminLoginRecord[]
+  adminSettings AdminSetting[]
+}
+
+// Admin Login Records - Track login history
+model AdminLoginRecord {
+  id          String   @id @default(cuid())
+  adminId     String
+  loginTime   DateTime @default(now())
+  ipAddress   String?
+  userAgent   String?
+  deviceInfo  String?
+  loginStatus String   @default("success") // success, failed
+  admin       Admin    @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId])
+  @@index([loginTime])
+}
+
+// User Operation Logs - Track all user operations
+model UserOperationLog {
+  id           String   @id @default(cuid())
+  userId       String?
+  username     String?
+  action       String   // login, logout, create_course, update_score, export, etc.
+  module       String   // auth, course, score, export, etc.
+  description  String?
+  requestPath  String?
+  requestMethod String?
+  requestParams String?
+  responseStatus Int?
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+  @@index([username])
+  @@index([action])
+  @@index([module])
+  @@index([createdAt])
+}
+
+// System Error Logs - Record system errors and exceptions
+model SystemErrorLog {
+  id          String   @id @default(cuid())
+  errorType   String
+  errorMessage String
+  stackTrace  String?
+  requestPath String?
+  requestMethod String?
+  requestParams String?
+  userId      String?
+  username    String?
+  ipAddress   String?
+  userAgent   String?
+  severity    String   @default("error") // error, warning, critical
+  resolved    Boolean  @default(false)
+  resolvedAt DateTime?
+  resolvedBy  String?
+  createdAt   DateTime @default(now())
+
+  @@index([errorType])
+  @@index([severity])
+  @@index([resolved])
+  @@index([createdAt])
+}
+
+// API Access Logs - Record all API requests
+model ApiAccessLog {
+  id           String   @id @default(cuid())
+  requestPath  String
+  requestMethod String
+  requestParams String?
+  responseStatus Int?
+  responseTime  Int?    // in milliseconds
+  requestIp    String?
+  userId       String?
+  username     String?
+  userAgent    String?
+  apiModule    String?  // courses, scores, auth, etc.
+  createdAt    DateTime @default(now())
+
+  @@index([requestPath])
+  @@index([requestMethod])
+  @@index([responseStatus])
+  @@index([createdAt])
+  @@index([requestIp])
+}
+
+// File Management - Store file metadata
+model FileRecord {
+  id           String   @id @default(cuid())
+  fileName     String
+  originalName String
+  filePath     String
+  fileSize     Int      // in bytes
+  fileType     String   // xlsx, pdf, png, jpg, docx, etc.
+  fileCategory String   // excel, pdf, image, document, backup
+  uploadedBy   String?
+  uploadedAt   DateTime @default(now())
+  description  String?
+  isDeleted    Boolean  @default(false)
+  deletedAt    DateTime?
+
+  @@index([fileType])
+  @@index([fileCategory])
+  @@index([uploadedAt])
+  @@index([isDeleted])
+}
+
+// Admin System Settings
+model AdminSetting {
+  id          String   @id @default(cuid())
+  settingKey  String   @unique
+  settingValue String
+  settingType String   @default("string") // string, number, boolean, json
+  description String?
+  category    String   @default("general") // general, backup, security, log
+  updatedAt   DateTime @updatedAt
+  adminId     String?
+  admin       Admin?   @relation(fields: [adminId], references: [id])
+
+  @@index([settingKey])
+  @@index([category])
+}
+
+// Data Backup Records
+model DataBackup {
+  id           String   @id @default(cuid())
+  backupName   String
+  backupPath   String
+  backupType   String   // full, partial, database, files
+  backupSize   Int?     // in bytes
+  status       String   @default("completed") // completed, failed, in_progress
+  createdAt    DateTime @default(now())
+  completedAt  DateTime?
+  description  String?
+  backupFileUrl String?
+
+  @@index([backupType])
+  @@index([status])
+  @@index([createdAt])
+}

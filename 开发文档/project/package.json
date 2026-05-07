@@ -1,0 +1,42 @@
+{
+  "name": "admin-system",
+  "version": "1.0.0",
+  "private": true,
+  "description": "单管理员版Web后台管理系统",
+  "scripts": {
+    "dev": "next dev",
+    "dev:optimized": "@powershell -Command $env:NODE_OPTIONS='--max-old-space-size=4096'; next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "check:types": "tsc --noEmit",
+    "check:health": "pnpm run check:types && pnpm run lint",
+    "db:push": "prisma db push",
+    "db:generate": "prisma generate",
+    "db:seed": "tsx prisma/seed-admin.ts",
+    "db:studio": "prisma studio",
+    "clean": "rm -rf node_modules .next pnpm-lock.yaml && pnpm cache clean"
+  },
+  "dependencies": {
+    "@ant-design/cssinjs": "^1.26.1",
+    "@ant-design/icons": "^6.0.0",
+    "@ant-design/nextjs-registry": "^1.0.1",
+    "@prisma/client": "^6.19.0",
+    "antd": "^5.24.2",
+    "dayjs": "^1.11.13",
+    "next": "16.2.1",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.1",
+    "prisma": "^6.19.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5"
+  }
+}

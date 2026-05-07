@@ -26,18 +26,26 @@ export async function GET(_request: Request, { params }: RouteProps) {
   }
 
   const buffer = await exportWorkbook(course, kind as "3" | "4" | "5");
-  const fileName =
-    kind === "3"
-      ? `${course.courseName || "课程"}课程达成度分析报告.xlsx`
-      : kind === "4"
-        ? `${course.courseName || "课程"}课程目标达成度.xlsx`
-        : `${course.courseName || "课程"}绘图数据.xlsx`;
 
-  return new NextResponse(new Uint8Array(buffer), {
+  const courseName = (course.courseName || "课程").replace(/[^\w\u4e00-\u9fa5]/g, "_");
+  const reportNames: Record<string, string> = {
+    "3": "课程达成度分析报告",
+    "4": "课程目标达成度",
+    "5": "绘图数据",
+  };
+  const reportName = reportNames[kind] || "导出数据";
+  const fileName = `${courseName}${reportName}.xlsx`;
+
+  const encodedFileName = encodeURIComponent(fileName);
+  const asciiFileName = fileName.replace(/[^\x00-\x7F]/g, "_");
+
+  const response = new NextResponse(new Uint8Array(buffer), {
     headers: {
       "Content-Type":
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+      "Content-Disposition": `attachment; filename="${asciiFileName}"; filename*=UTF-8''${encodedFileName}`,
     },
   });
+
+  return response;
 }
